@@ -1,0 +1,16 @@
+name: mwow-user-tools
+channels:
+  - conda-forge
+
+dependencies:
+  - python>=3.9
+  - numpy
+  - xarray
+  - netCDF4
+  - matplotlib
+  - pandas
+  - jupyter
+  - nbconvert
+
+  # Optional: uncomment for pyFerret support
+  # - pyferret

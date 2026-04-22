@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mwow-tools"
+version = "0.1.0"
+description = "Tools for accessing and visualizing MWOW ocean wind data products"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "JPL Ocean Winds Team"},
+]
+dependencies = [
+    "numpy",
+    "xarray",
+    "netCDF4",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+ferret = ["pyferret"]
+cli = ["pandas"]
+dev = ["pytest", "jupyter", "nbconvert"]
+
+[project.scripts]
+mwow-tools = "mwow_tools.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mwow_tools*"]

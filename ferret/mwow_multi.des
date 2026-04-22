@@ -1,0 +1,47 @@
+************************************************************
+* MWOW Multi-File Descriptor Template
+*
+* This descriptor file allows Ferret to treat a sequence of
+* MWOW NetCDF files as a single aggregated dataset.
+*
+* HOW TO USE:
+*   1. Copy this file and edit the STEPFILE_RECORD entries
+*      to list your actual MWOW filenames.
+*   2. Set S_NUM_OF_FILES to your file count.
+*   3. In Ferret:  USE mwow_multi.des
+*
+* NOTES:
+*   - MWOW files use an "orbit" dimension (not time), so the
+*     aggregation axis is abstract.  Each file contributes its
+*     orbits along the Z axis.
+*   - Adjust D_TITLE to describe your dataset.
+*   - S_START / S_END / S_DELTA are in units of D_TIME_UNIT
+*     (here set to 1.0 = abstract count).
+************************************************************
+ $FORMAT_RECORD
+ D_TYPE = ' MC',
+ D_FORMAT = ' 1A',
+ $END
+ $BACKGROUND_RECORD
+ D_TITLE = 'MWOW Multi-sensor Ocean Winds (user files)',
+ D_T0TIME = '01-JAN-2026 00:00:00',
+ D_TIME_UNIT = 1.0,
+ D_TIME_MODULO = .FALSE.,
+ $END
+ $MESSAGE_RECORD
+ D_MESSAGE = ' ',
+ D_ALERT_ON_OPEN = F,
+ D_ALERT_ON_OUTPUT = F,
+ $END
+ $EXTRA_RECORD
+ $END
+ $STEPFILE_RECORD
+ S_FILENAME = '/path/to/MWOW_file_001.nc',
+ S_START = 1.0,
+ S_END = 35.0,
+ S_DELTA = 1.0,
+ S_NUM_OF_FILES = 1,
+ $END
+ $STEPFILE_RECORD
+ S_FILENAME = '**END OF STEPFILES**'
+ $END

@@ -1,0 +1,35 @@
+\ mwow_timeseries.jnl
+\
+\ Plot wind speed from an MWOW file at a single grid point across all orbits.
+\
+\ Usage:
+\   go mwow_timeseries <file_or_pattern> <latitude> <longitude>
+\
+\ Examples:
+\   go mwow_timeseries "/data/mwow/MWOW_20260321*.nc" (-54) 90
+\   go mwow_timeseries my_mwow_file.nc (-38) 70
+\
+\ Notes:
+\   - Negative latitudes and longitudes must be enclosed in parentheses.
+\   - The orbit dimension is mapped to the Z axis.  Each K index
+\     corresponds to one satellite pass within the 6-hour window.
+\   - Ferret will map longitude->X, latitude->Y, orbit->Z automatically
+\     because MWOW files are CF-compliant.
+\
+\ Arguments:
+\   $1  MWOW NetCDF file path or pattern
+\   $2  Latitude (degrees, negative for south)
+\   $3  Longitude (degrees, negative for west)
+
+cancel mode verify
+
+say *** Loading MWOW data from $1
+use/order=xyz "$1"
+
+say *** Extracting wind_speed at lat=$2, lon=$3 across all orbits
+
+let mwow_ws_point = wind_speed[y=$2, x=$3]
+
+plot/title="MWOW Wind Speed at ($2, $3)"/vlabel="Wind Speed [m/s]"/hlabel="Orbit Index" mwow_ws_point
+
+set mode/last verify
