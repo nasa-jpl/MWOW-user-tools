@@ -61,7 +61,7 @@ class TestFullPipelineEPI:
         ds = open_mwow_files(epi_lowres_files)
         lats = [-40.0, -41.0, -42.0, -43.0, -44.0]
         lons = [70.0, 71.0, 72.0, 73.0, 74.0]
-        times = [f"2026-04-14T{h:02d}:00:00" for h in [1, 6, 12, 18, 23]]
+        times = [f"2026-04-18T{h:02d}:00:00" for h in [1, 6, 12, 18, 23]]
         result = match_ship_track(ds, lats, lons, times)
         assert result.sizes["point"] == 5
         ds.close()
@@ -207,8 +207,8 @@ class TestVisualPlots:
         fig, ax = plt.subplots(figsize=(12, 4))
         t = pt_c.time.values
         ws = pt_c.wind_speed.values
-        ax.scatter(np.arange(len(ws)), ws, c="steelblue", s=20)
-        ax.set_xlabel("Orbit Index")
+        ax.scatter(t, ws, c="steelblue", s=20)
+        ax.set_xlabel("Time of Observation [UTC]")
         ax.set_ylabel("Wind Speed [m/s]")
         ax.set_title("EPI Lowres: Wind Speed at (-40, 70) — 1 day")
         ax.grid(True)
@@ -225,9 +225,10 @@ class TestVisualPlots:
         pt_c = pt.compute()
 
         fig, ax = plt.subplots(figsize=(12, 4))
+        t = pt_c.time.values
         ws = pt_c.wind_speed.values
-        ax.scatter(np.arange(len(ws)), ws, c="darkorange", s=20)
-        ax.set_xlabel("Orbit Index")
+        ax.scatter(t, ws, c="darkorange", s=20)
+        ax.set_xlabel("Time of Observation [UTC]")
         ax.set_ylabel("Wind Speed [m/s]")
         ax.set_title("nonEPI Lowres: Wind Speed at (-40, 70) — 1 day")
         ax.grid(True)
@@ -307,7 +308,7 @@ class TestVisualPlots:
         ds = open_mwow_files(epi_lowres_files)
         lats = np.linspace(-35, -45, 10)
         lons = np.linspace(65, 75, 10)
-        times = [f"2026-04-14T{h:02d}:00:00"
+        times = [f"2026-04-18T{h:02d}:00:00"
                  for h in np.linspace(0, 23, 10).astype(int)]
         result = match_ship_track(ds, lats, lons, times)
         res = result.compute()

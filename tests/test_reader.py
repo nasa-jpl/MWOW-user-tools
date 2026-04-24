@@ -146,7 +146,7 @@ class TestMatchShipTrack:
 
     def test_single_point_track(self, single_lowres_file):
         ds = open_mwow_files(single_lowres_file)
-        result = match_ship_track(ds, [-30.0], [50.0], ["2026-04-14T03:00:00"])
+        result = match_ship_track(ds, [-30.0], [50.0], ["2026-04-18T03:00:00"])
         assert result.sizes["point"] == 1
         ds.close()
 
@@ -154,8 +154,8 @@ class TestMatchShipTrack:
         ds = open_mwow_files(single_lowres_file)
         lats = [-30.0, -31.0, -32.0]
         lons = [50.0, 51.0, 52.0]
-        times = ["2026-04-14T01:00:00", "2026-04-14T03:00:00",
-                 "2026-04-14T05:00:00"]
+        times = ["2026-04-18T01:00:00", "2026-04-18T03:00:00",
+                 "2026-04-18T05:00:00"]
         result = match_ship_track(ds, lats, lons, times)
         assert result.sizes["point"] == 3
         ds.close()
@@ -163,7 +163,7 @@ class TestMatchShipTrack:
     def test_closest_time_orbit_selected(self, single_lowres_file):
         ds = open_mwow_files(single_lowres_file)
         # Use a time near the start of the 6-hour window
-        result = match_ship_track(ds, [-30.0], [50.0], ["2026-04-14T00:30:00"])
+        result = match_ship_track(ds, [-30.0], [50.0], ["2026-04-18T00:30:00"])
         # Result has a 'point' dimension of size 1
         assert result.sizes["point"] == 1
         ds.close()
@@ -173,14 +173,14 @@ class TestMatchShipTrack:
         mid_lat = float(ds.latitude.values[len(ds.latitude) // 2])
         mid_lon = float(ds.longitude.values[len(ds.longitude) // 2])
         result = match_ship_track(ds, [mid_lat], [mid_lon],
-                                  ["2026-04-14T03:00:00"])
+                                  ["2026-04-18T03:00:00"])
         assert result.sizes["point"] == 1
         ds.close()
 
     def test_land_point_does_not_crash(self, single_lowres_file):
         ds = open_mwow_files(single_lowres_file)
         # Sahara desert — should be all NaN for wind data
-        result = match_ship_track(ds, [25.0], [10.0], ["2026-04-14T03:00:00"])
+        result = match_ship_track(ds, [25.0], [10.0], ["2026-04-18T03:00:00"])
         assert result.sizes["point"] == 1
         # wind_speed should be NaN (result has point dim of size 1)
         ws = result["wind_speed"].values

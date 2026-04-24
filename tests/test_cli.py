@@ -65,9 +65,9 @@ class TestCLIShipTrack:
         csv = tmp_path / "track.csv"
         csv.write_text(
             "latitude,longitude,time\n"
-            "-30.0,50.0,2026-04-14T01:00:00\n"
-            "-31.0,51.0,2026-04-14T03:00:00\n"
-            "-32.0,52.0,2026-04-14T05:00:00\n"
+            "-30.0,50.0,2026-04-18T01:00:00\n"
+            "-31.0,51.0,2026-04-18T03:00:00\n"
+            "-32.0,52.0,2026-04-18T05:00:00\n"
         )
         main(["ship-track", single_lowres_file,
               "--track", str(csv), "--no-plot"])
@@ -98,7 +98,7 @@ class TestCLIVarAndClim:
         csv = tmp_path / "track.csv"
         csv.write_text(
             "latitude,longitude,time\n"
-            "-30.0,50.0,2026-04-14T01:00:00\n"
+            "-30.0,50.0,2026-04-18T01:00:00\n"
         )
         main(["ship-track", single_lowres_file,
               "--track", str(csv), "--var", "wind_direction", "--no-plot"])

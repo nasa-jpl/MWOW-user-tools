@@ -21,7 +21,7 @@ DATA_ROOT = os.environ.get("MWOW_DATA_ROOT", DEFAULT_DATA_ROOT)
 HAS_REAL_DATA = os.path.isdir(os.path.join(DATA_ROOT, "epi", "lowres"))
 
 # A known date with data in all 4 product types
-DATA_DATE = "2026/04/14"
+DATA_DATE = "2026/04/18"
 
 realdata = pytest.mark.skipif(
     not HAS_REAL_DATA,
