@@ -4,8 +4,8 @@ Command-line interface for mwow_tools.
 Usage examples::
 
     mwow-tools timeseries /data/mwow/*.nc --lat -54 --lon 90
-    mwow-tools ship-track /data/mwow/*.nc --track ship.csv
-    mwow-tools region /data/mwow/*.nc --lat -38 --lon 70 --size 5
+    mwow-tools region /data/mwow/*.nc --lat -38 --lon 70 --size 5 --var wind_u --vmin -15 --vmax 15
+    mwow-tools ship-track /data/mwow/*.nc --track ship.csv --var wind_speed
 """
 
 import argparse
@@ -14,10 +14,60 @@ import sys
 import numpy as np
 
 
+# ── Variable helpers ────────────────────────────────────────────────────
+
+DERIVED = {"wind_u", "wind_v"}
+
+UNITS = {
+    "wind_speed": "m/s",
+    "wind_direction": "deg",
+    "wind_speed_uncert": "m/s",
+    "wind_direction_uncert": "deg",
+    "wind_u": "m/s",
+    "wind_v": "m/s",
+    "quality_indicator": "",
+}
+
+
+def _get_plot_data(ds, var):
+    """Return a DataArray for *var*, computing derived variables on the fly."""
+    if var == "wind_u":
+        return ds["wind_speed"] * np.sin(np.radians(ds["wind_direction"]))
+    elif var == "wind_v":
+        return ds["wind_speed"] * np.cos(np.radians(ds["wind_direction"]))
+    elif var in ds:
+        return ds[var]
+    else:
+        available = sorted(set(ds.data_vars) | DERIVED)
+        sys.exit(f"Unknown variable '{var}'. Available: {', '.join(available)}")
+
+
+def _label_for(var):
+    """Human-readable label with units for axis / colorbar."""
+    name = var.replace("_", " ").title()
+    unit = UNITS.get(var, "")
+    return f"{name} [{unit}]" if unit else name
+
+
+# ── Argument helpers ────────────────────────────────────────────────────
+
 def _add_common_args(parser):
     parser.add_argument(
         "files", nargs="+",
         help="MWOW NetCDF file(s) or glob pattern",
+    )
+    parser.add_argument(
+        "--var", default="wind_speed",
+        help="Variable to plot (default: wind_speed). "
+             "File variables plus derived: wind_u (zonal), wind_v (meridional).",
+    )
+    parser.add_argument(
+        "--vmin", type=float, default=None,
+        help="Colorbar / y-axis minimum",
+    )
+    parser.add_argument(
+        "--vmax", type=float, default=None,
+        help="Colorbar / y-axis maximum",
     )
     parser.add_argument(
         "--no-plot", action="store_true",
@@ -29,6 +79,37 @@ def _add_common_args(parser):
     )
 
 
+# ── Orbit title helper ─────────────────────────────────────────────────
+
+def _orbit_title(ds_orbit):
+    """Build a title string like 'ASCAT-C — 20260414T032145 UTC Asc'."""
+    sensor = str(ds_orbit["sensor_name"].values) if "sensor_name" in ds_orbit else "?"
+    time_slice = ds_orbit["time"].values
+    valid_times = time_slice[~np.isnat(time_slice)]
+    if len(valid_times) > 0:
+        mean_ns = int(valid_times.astype("int64").mean())
+        mean_t = np.datetime64(mean_ns, "ns")
+        ts = str(mean_t)[:19].replace("-", "").replace(":", "")
+        # Ascending if time increases with latitude
+        mid_lon_idx = ds_orbit.sizes["longitude"] // 2
+        t_col = ds_orbit["time"].isel(longitude=mid_lon_idx).values
+        t_valid = t_col[~np.isnat(t_col)]
+        direction = ""
+        if len(t_valid) > 1:
+            lat_vals = ds_orbit.latitude.values
+            lat_of_valid = lat_vals[~np.isnat(t_col)]
+            if lat_of_valid[0] < lat_of_valid[-1]:
+                direction = " Asc" if t_valid[-1] > t_valid[0] else " Desc"
+            else:
+                direction = " Desc" if t_valid[-1] > t_valid[0] else " Asc"
+    else:
+        ts = "no-data"
+        direction = ""
+    return f"{sensor} — {ts} UTC{direction}"
+
+
+# ── Subcommands ─────────────────────────────────────────────────────────
+
 def cmd_timeseries(args):
     """Extract and plot a time series at a single point."""
     from mwow_tools import open_mwow_files, select_point
@@ -39,18 +120,24 @@ def cmd_timeseries(args):
 
     if args.no_plot:
         computed = ds_point.compute()
+        data = _get_plot_data(computed, args.var)
         for i in range(computed.sizes["orbit"]):
             t = computed.time.values[i]
-            ws = computed.wind_speed.values[i]
-            print(f"orbit {i:3d}  time={t}  wind_speed={ws:.2f}")
+            val = float(data.values[i])
+            print(f"orbit {i:3d}  time={t}  {args.var}={val:.2f}")
         return
 
+    data = _get_plot_data(ds_point, args.var)
+    label = _label_for(args.var)
+
     plt.figure(figsize=(12, 4))
-    plt.scatter(ds_point.time, ds_point.wind_speed, c=np.arange(ds_point.sizes["orbit"]))
+    plt.scatter(ds_point.time, data, c=np.arange(ds_point.sizes["orbit"]))
     plt.xlabel("Time of Observation [UTC]")
-    plt.ylabel("Wind Speed [m/s]")
+    plt.ylabel(label)
     plt.colorbar(label="Orbit Pass Number")
-    plt.title(f"MWOW Wind Speed at ({args.lat}, {args.lon})")
+    plt.title(f"MWOW {label} at ({args.lat}, {args.lon})")
+    if args.vmin is not None or args.vmax is not None:
+        plt.ylim(args.vmin, args.vmax)
     plt.grid(True)
     plt.tight_layout()
     if args.output:
@@ -82,32 +169,36 @@ def cmd_ship_track(args):
 
     if args.no_plot:
         computed = ds_ship.compute()
+        data = _get_plot_data(computed, args.var)
         for i in range(computed.sizes["point"]):
             print(
                 f"point {i:3d}  "
                 f"lat={computed.latitude.values[i]:.2f}  "
                 f"lon={computed.longitude.values[i]:.2f}  "
                 f"time={computed.time.values[i]}  "
-                f"wind_speed={computed.wind_speed.values[i]:.2f}"
+                f"{args.var}={float(data.values[i]):.2f}"
             )
         return
+
+    data = _get_plot_data(ds_ship, args.var)
+    label = _label_for(args.var)
 
     plt.figure(figsize=(12, 6))
     sc = plt.scatter(
         ds_ship.longitude, ds_ship.latitude,
-        c=ds_ship.wind_speed, s=60,
+        c=data, s=60, vmin=args.vmin, vmax=args.vmax,
     )
     for lon, lat, t in zip(
         ds_ship.longitude.values,
         ds_ship.latitude.values,
         ds_ship.time.values,
     ):
-        label = np.datetime_as_string(t, unit="s")
-        plt.text(lon, lat, f" {label}", fontsize=8, ha="left", va="bottom")
+        lbl = np.datetime_as_string(t, unit="s")
+        plt.text(lon, lat, f" {lbl}", fontsize=8, ha="left", va="bottom")
     plt.xlabel("Longitude [deg]")
     plt.ylabel("Latitude [deg]")
-    plt.colorbar(sc, label="Wind Speed [m/s]")
-    plt.title("MWOW Wind Speed Along Ship Track")
+    plt.colorbar(sc, label=label)
+    plt.title(f"MWOW {label} Along Ship Track")
     plt.grid(True)
     plt.tight_layout()
     if args.output:
@@ -137,12 +228,28 @@ def cmd_region(args):
         print(f"Orbits with data: {n_orbits}")
         return
 
+    # Compute shared color range across all orbits
+    plot_data = _get_plot_data(ds_region, args.var).compute()
+    vals = plot_data.values
+    finite = vals[np.isfinite(vals)]
+    if len(finite) > 0:
+        data_vmin, data_vmax = float(finite.min()), float(finite.max())
+    else:
+        data_vmin, data_vmax = 0.0, 1.0
+    vmin = args.vmin if args.vmin is not None else data_vmin
+    vmax = args.vmax if args.vmax is not None else data_vmax
+
+    label = _label_for(args.var)
+
     fig, axes = plt.subplots(n_orbits, 1, figsize=(10, 4 * n_orbits), squeeze=False)
     for i in range(n_orbits):
         ax = axes[i, 0]
-        ds_region.wind_speed[..., i].T.plot(ax=ax)
+        ds_orbit = ds_region.isel(orbit=i)
+        orbit_data = plot_data.isel(orbit=i)
+        orbit_data.plot(ax=ax, x="longitude", y="latitude",
+                        vmin=vmin, vmax=vmax, cbar_kwargs={"label": label})
         ax.set_aspect("equal")
-        ax.set_title(f"Orbit {i}")
+        ax.set_title(_orbit_title(ds_orbit))
     plt.tight_layout()
     if args.output:
         plt.savefig(args.output, dpi=150)

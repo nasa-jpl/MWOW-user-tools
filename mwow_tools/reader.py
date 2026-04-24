@@ -12,7 +12,17 @@ import xarray as xr
 
 
 def open_mwow_files(paths, chunks="auto"):
-    """Open one or more MWOW NetCDF files and stack them along the orbit dimension.
+    """Open one or more MWOW NetCDF files and return a lazily-loaded Dataset.
+
+    For **lowres** files (same global grid, different time windows), files are
+    concatenated along the ``orbit`` dimension.
+
+    For **highres** tiles (different spatial grids, same time window), tiles are
+    merged by coordinates into a single dataset covering the union of all tile
+    regions.  Regions with no data are filled with NaN.
+
+    The function auto-detects which strategy to use by comparing the latitude
+    coordinates of the first two files.
 
     Parameters
     ----------
@@ -26,7 +36,7 @@ def open_mwow_files(paths, chunks="auto"):
     Returns
     -------
     xarray.Dataset
-        Lazily-loaded dataset with dimensions ``(longitude, latitude, orbit)``.
+        Lazily-loaded dataset with dimensions ``(orbit, latitude, longitude)``.
     """
     if isinstance(paths, str):
         expanded = sorted(_glob.glob(paths))
@@ -34,7 +44,27 @@ def open_mwow_files(paths, chunks="auto"):
             expanded = [paths]
         paths = expanded
 
-    return xr.open_mfdataset(paths, chunks=chunks)
+    if len(paths) == 1:
+        return xr.open_mfdataset(paths, chunks=chunks,
+                                 combine="nested", concat_dim="orbit")
+
+    # Peek at the first two files to decide merge strategy.
+    with xr.open_dataset(paths[0]) as ds0, xr.open_dataset(paths[1]) as ds1:
+        same_grid = (ds0.sizes["latitude"] == ds1.sizes["latitude"]
+                     and ds0.sizes["longitude"] == ds1.sizes["longitude"]
+                     and np.array_equal(ds0.latitude.values,
+                                        ds1.latitude.values)
+                     and np.array_equal(ds0.longitude.values,
+                                        ds1.longitude.values))
+
+    if same_grid:
+        # Lowres files (or same-tile highres): concatenate along orbit.
+        return xr.open_mfdataset(paths, chunks=chunks,
+                                 combine="nested", concat_dim="orbit")
+    else:
+        # Highres tiles covering different regions: merge by coordinates.
+        return xr.open_mfdataset(paths, chunks=chunks,
+                                 combine="by_coords", join="outer")
 
 
 def select_point(ds, lat, lon):
