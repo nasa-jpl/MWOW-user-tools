@@ -3,14 +3,14 @@ channels:
   - conda-forge
 
 dependencies:
-  - python>=3.9
+  - python=3.10
   - numpy
   - xarray
   - netCDF4
+  - dask
   - matplotlib
   - pandas
   - jupyter
   - nbconvert
-
-  # Optional: uncomment for pyFerret support
-  # - pyferret
+  - pytest
+  - pyferret

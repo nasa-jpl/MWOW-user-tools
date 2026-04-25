@@ -80,31 +80,17 @@ account.
 
 ## Installation
 
-### Option A: conda (recommended)
-
 ```bash
-git clone <repo-url> mwow-user-tools
+git clone git@github-fn.jpl.nasa.gov:MWOW/mwow-user-tools.git
 cd mwow-user-tools
 conda env create -f environment.yml
 conda activate mwow-user-tools
 pip install -e .
 ```
 
-### Option B: pip only
-
-```bash
-git clone <repo-url> mwow-user-tools
-cd mwow-user-tools
-pip install -e .
-```
-
-### With pyFerret support
-
-```bash
-conda install -c conda-forge pyferret
-# Then add ferret/ to your FER_GO path:
-export FER_GO="$FER_GO /path/to/mwow-user-tools/ferret"
-```
+This creates a Python 3.10 environment with all dependencies including
+pyFerret. See [INSTALL.md](INSTALL.md) for detailed instructions for
+Jupyter, CLI, Python, MATLAB, and pyFerret users.
 
 
 ## Quick start
@@ -180,7 +166,10 @@ NOAA scientists who work in Ferret / pyFerret:
 ### 1. Python bridge (recommended)
 
 The bridge module loads MWOW data into pyFerret with proper axis
-definitions, handling the orbit dimension automatically:
+definitions.  Point and region functions map orbits to the **T (time)
+axis** so you can use Ferret's time-based subsetting.  Full-file loads
+use the **Z axis** because overlapping sensor times make a monotonic
+time axis unreliable at global scale.
 
 ```python
 import pyferret
@@ -188,26 +177,31 @@ from mwow_ferret import load_mwow, load_mwow_point, load_mwow_region
 
 pyferret.start(quiet=True)
 
-# Load full dataset (orbit -> Z axis, accessible via /K=)
+# Single-point time series (T axis — enables time subsetting)
+load_mwow_point("/data/mwow/*.nc", lat=-54, lon=90)
+pyferret.run('plot MWOW_WIND_SPEED_POINT')
+pyferret.run('list MWOW_WIND_SPEED_POINT[T="18-APR-2026 00:00":"18-APR-2026 06:00"]')
+
+# Regional subset (T axis)
+load_mwow_region("/data/mwow/*.nc", lat_center=-38, lon_center=70)
+pyferret.run('shade/l=1/palette=viridis MWOW_WIND_SPEED_REGION')
+
+# Full dataset (Z axis — browse orbits with /K=)
 load_mwow("/data/mwow/*.nc")
 pyferret.run('shade/k=1/palette=viridis MWOW_WIND_SPEED')
-pyferret.run('go land_detail')
-
-# Single-point series
-load_mwow_point("/data/mwow/*.nc", lat=-54, lon=90)
-pyferret.run('plot MWOW_POINT')
-
-# Regional subset
-load_mwow_region("/data/mwow/*.nc", lat_center=-38, lon_center=70)
-pyferret.run('shade/k=1 MWOW_WIND_SPEED_REGION')
 ```
+
+All functions accept a ``var`` parameter (default ``"wind_speed"``).
+Orbits are automatically deduplicated and sorted by time.  If the time
+variation within an orbit exceeds 10 minutes for a region, a warning
+recommends using the ``_z`` variant (e.g. ``load_mwow_region_z``) instead.
 
 Convenience plotting functions are also available:
 
 ```python
 from mwow_ferret import plot_timeseries, plot_region_orbit
 
-plot_timeseries("MWOW_POINT", output="timeseries.png")
+plot_timeseries("MWOW_WIND_SPEED_POINT", output="timeseries.png")
 plot_region_orbit("MWOW_WIND_SPEED_REGION", orbit=2, palette="viridis")
 ```
 
@@ -236,11 +230,12 @@ shade/k=1 wind_speed
 
 ### How MWOW maps to Ferret axes
 
-| MWOW dimension | Ferret axis | Access qualifier |
-|---------------|-------------|-----------------|
-| longitude | X | `/X=` or `/I=` |
-| latitude | Y | `/Y=` or `/J=` |
-| orbit | Z (custom) | `/K=` |
+| MWOW dimension | Ferret axis | Access qualifier | Functions |
+|---------------|-------------|-----------------|-----------|
+| longitude | X | `/X=` or `/I=` | all |
+| latitude | Y | `/Y=` or `/J=` | all |
+| orbit | T (time) | `/T=` or `/L=` | `load_mwow_point`, `load_mwow_region` |
+| orbit | Z (custom) | `/K=` | `load_mwow`, `*_z` variants |
 
 
 ## Examples

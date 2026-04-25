@@ -44,7 +44,8 @@ class TestOpenMwowFiles:
 
     def test_glob_pattern_lowres(self, data_root):
         import os
-        pattern = os.path.join(data_root, "epi", "lowres", "2026", "04", "14", "*.nc")
+        from conftest import DATA_DATE
+        pattern = os.path.join(data_root, "epi", "lowres", DATA_DATE, "*.nc")
         ds = open_mwow_files(pattern)
         # 4 files x ~35 orbits each
         assert ds.sizes["orbit"] > 35
