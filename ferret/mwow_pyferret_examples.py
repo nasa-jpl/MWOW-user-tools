@@ -2,16 +2,30 @@
 """
 pyFerret examples for MWOW data products.
 
-This script demonstrates four workflows:
+This script demonstrates five workflows:
   1. Load a single-point time series (T axis — time-based subsetting)
   2. Load and browse a geographic sub-region (T axis)
   3. Load a full dataset for orbit browsing (Z axis)
   4. Ad-hoc Ferret analysis commands
+  5. Matplotlib plotting (RECOMMENDED — works in all environments)
 
 Requirements:
   conda env create -f environment.yml
   conda activate mwow-user-tools
   pip install -e .
+
+NOTE on plotting:
+  pyferret 7.6.5 on conda-forge (the only py310 build as of April 2026)
+  has a fatal Fortran runtime error that crashes any plot/shade command.
+  The bug is a missing comma in ppl/symlib/getsym.F line 95.
+
+    Bug: https://github.com/NOAA-PMEL/PyFerret/issues/145
+    Fix (pending merge): https://github.com/NOAA-PMEL/PyFerret/pull/149
+
+  Use the mpl_plot_* functions (Example 5) for plotting until a fixed
+  build is available.  The native Ferret plot commands (Examples 1-3)
+  will work if you build pyferret from source with PR #149 applied, or
+  use a NOAA-distributed build with an older gfortran runtime.
 
 Usage:
   python mwow_pyferret_examples.py            (uses placeholder paths)
@@ -28,6 +42,8 @@ from mwow_ferret import (
     load_mwow_region_z,
     plot_timeseries,
     plot_region_orbit,
+    mpl_plot_timeseries,
+    mpl_plot_region,
 )
 
 
@@ -102,6 +118,31 @@ def main():
                  ' - MWOW_WIND_SPEED[k=1]')
     pyferret.run('shade/palette=blue_orange'
                  '/title="Orbit 2 minus Orbit 1" orbit_diff')
+
+    # ---------------------------------------------------------------
+    # Example 5: Matplotlib plotting (RECOMMENDED)
+    # ---------------------------------------------------------------
+    # The mpl_plot_* functions extract data from Ferret variables and
+    # plot with matplotlib.  They work regardless of the getsym.F bug
+    # in pyferret 7.6.5.  This is the recommended plotting approach
+    # for Python+pyferret users.
+    print("\n=== Example 5: Matplotlib plotting (recommended) ===")
+
+    # Point time series — uses data already loaded in Example 1
+    mpl_plot_timeseries("MWOW_WIND_SPEED_POINT",
+                        output="mwow_mpl_timeseries.png",
+                        title="MWOW Wind Speed at (-54, 90)",
+                        vmax=30)
+
+    # Region shade — uses data already loaded in Example 2
+    mpl_plot_region("MWOW_WIND_SPEED_REGION", orbit=1,
+                    output="mwow_mpl_region_pass1.png",
+                    title="MWOW Region (-38, 70) – Pass 1")
+
+    # Multiple orbits
+    mpl_plot_region("MWOW_WIND_SPEED_REGION", orbit=2,
+                    output="mwow_mpl_region_pass2.png",
+                    title="MWOW Region (-38, 70) – Pass 2")
 
     print("\nDone. Close the Ferret window or call pyferret.stop() to exit.")
 

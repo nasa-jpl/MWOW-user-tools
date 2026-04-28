@@ -8,6 +8,8 @@ Run in the mwow-user-tools conda env (Python 3.10).
 import os
 import sys
 
+import matplotlib
+matplotlib.use("Agg")
 import numpy as np
 import pytest
 
@@ -31,6 +33,8 @@ from mwow_ferret import (
     load_mwow_point_z,
     load_mwow_region,
     load_mwow_region_z,
+    mpl_plot_timeseries,
+    mpl_plot_region,
 )
 
 try:
@@ -396,14 +400,71 @@ class TestTimeSpreadWarning:
 # Visual sanity checks — save plots
 # =====================================================================
 
+# Native Ferret plot/shade commands crash in pyferret 7.6.5 conda-forge
+# (the only py310 build) due to a missing comma in a Fortran FORMAT
+# statement at ppl/symlib/getsym.F:95.  The error is fatal (kills the
+# process) and cannot be worked around at the Ferret command level.
+#
+# Bug report: https://github.com/NOAA-PMEL/PyFerret/issues/145
+# Fix (pending merge): https://github.com/NOAA-PMEL/PyFerret/pull/149
+#
+# The matplotlib-based plot functions (mpl_plot_timeseries, mpl_plot_region)
+# bypass the Ferret plot engine entirely and work in all environments.
+NATIVE_FERRET_PLOT_SKIP = (
+    "pyferret 7.6.5 conda-forge build has fatal Fortran error in "
+    "getsym.F:95 on any plot/shade command (crashes process).  "
+    "See https://github.com/NOAA-PMEL/PyFerret/issues/145 — "
+    "fix pending in PR #149.  Use mpl_plot_* functions instead."
+)
+
+
 @needs_pyferret
 @realdata
-@pytest.mark.skip(reason="pyferret 7.6.5 plot engine has Fortran runtime "
-                         "error (getsym.F:95) — run manually when fixed")
 class TestFerretPlots:
+    """Plot tests for the pyFerret bridge.
 
-    def test_point_timeseries_plot(self, epi_lowres_files,
-                                    ferret_session, plot_dir):
+    Matplotlib-based tests run normally.  Native Ferret plot tests are
+    skipped due to a fatal Fortran runtime error in pyferret 7.6.5
+    (conda-forge py310 build):
+
+        ppl/symlib/getsym.F:95 has a missing comma in FORMAT 101 that
+        causes "Missing comma between descriptors" when the TIME symbol
+        is evaluated during plot rendering.  This crashes the process.
+
+    Bug report: https://github.com/NOAA-PMEL/PyFerret/issues/145
+    Fix (pending merge): https://github.com/NOAA-PMEL/PyFerret/pull/149
+    """
+
+    # --- matplotlib-based plots (work in all environments) ---
+
+    def test_mpl_point_timeseries(self, epi_lowres_files,
+                                  ferret_session, plot_dir):
+        if not epi_lowres_files:
+            pytest.skip("No EPI lowres files")
+        load_mwow_point(epi_lowres_files, lat=-40.0, lon=70.0,
+                        ferret_name="TEST_MPL_PT")
+        out = str(plot_dir / "mpl_timeseries_point.png")
+        mpl_plot_timeseries("TEST_MPL_PT", output=out,
+                            title="Wind Speed at (-40, 70)", vmax=30)
+        assert os.path.isfile(out)
+        assert os.path.getsize(out) > 5000  # non-trivial PNG
+
+    def test_mpl_region_shade(self, single_lowres_file,
+                              ferret_session, plot_dir):
+        load_mwow_region(single_lowres_file,
+                         lat_center=-38.0, lon_center=70.0,
+                         ferret_name="TEST_MPL_REG")
+        out = str(plot_dir / "mpl_region_shade.png")
+        mpl_plot_region("TEST_MPL_REG", orbit=1, output=out,
+                        title="Region (-38, 70) Pass 1")
+        assert os.path.isfile(out)
+        assert os.path.getsize(out) > 5000  # non-trivial PNG
+
+    # --- native Ferret plots (skipped until pyferret bug is fixed) ---
+
+    @pytest.mark.skip(reason=NATIVE_FERRET_PLOT_SKIP)
+    def test_native_point_timeseries_plot(self, epi_lowres_files,
+                                          ferret_session, plot_dir):
         if not epi_lowres_files:
             pytest.skip("No EPI lowres files")
         load_mwow_point(epi_lowres_files, lat=-40.0, lon=70.0,
@@ -415,8 +476,9 @@ class TestFerretPlots:
         assert os.path.isfile(out)
         assert os.path.getsize(out) > 0
 
-    def test_region_shade_plot(self, single_lowres_file,
-                                ferret_session, plot_dir):
+    @pytest.mark.skip(reason=NATIVE_FERRET_PLOT_SKIP)
+    def test_native_region_shade_plot(self, single_lowres_file,
+                                      ferret_session, plot_dir):
         load_mwow_region(single_lowres_file,
                          lat_center=-38.0, lon_center=70.0,
                          ferret_name="TEST_PLOT_REG")

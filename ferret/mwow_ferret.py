@@ -14,19 +14,44 @@ instead.
 Full-file loads always use the **Z axis** because overlapping sensor times
 make a monotonic T axis unreliable at global scale.
 
+Plotting
+--------
+Two plotting approaches are provided:
+
+1. **Matplotlib (recommended):** ``mpl_plot_timeseries()`` and
+   ``mpl_plot_region()`` extract data from Ferret variables and plot with
+   matplotlib.  These work in all environments.
+
+2. **Native Ferret:** ``plot_timeseries()`` and ``plot_region_orbit()`` use
+   Ferret's built-in ``plot``/``shade`` commands.  These require a pyferret
+   build that does NOT have the getsym.F Fortran runtime bug (see below).
+
+.. warning:: pyferret 7.6.5 on conda-forge (the only py310 build as of
+   April 2026) has a fatal Fortran runtime error in ``ppl/symlib/getsym.F``
+   line 95 — a missing comma in FORMAT statement 101 causes any plot/shade
+   command to crash the process.  This bug has been present since 2010 but
+   only manifests with strict gfortran runtimes (libgfortran >= 12).
+
+   - Bug report: https://github.com/NOAA-PMEL/PyFerret/issues/145
+   - Fix (pending merge): https://github.com/NOAA-PMEL/PyFerret/pull/149
+
+   Use the ``mpl_plot_*`` functions until a fixed pyferret build is available,
+   or build pyferret from source with PR #149 applied.
+
 Requires
 --------
 - pyferret  (conda install -c conda-forge pyferret)
 - mwow_tools  (pip install -e . from the repo root)
 - numpy, xarray
+- matplotlib  (for mpl_plot_* functions)
 
 Quick start
 -----------
 >>> import pyferret
->>> from mwow_ferret import load_mwow, load_mwow_point, load_mwow_region
+>>> from mwow_ferret import load_mwow_point, mpl_plot_timeseries
 >>> pyferret.start(quiet=True)
 >>> load_mwow_point("/data/mwow/*.nc", lat=-54, lon=90)
->>> pyferret.run("plot MWOW_WIND_SPEED_POINT")
+>>> mpl_plot_timeseries()  # matplotlib — works everywhere
 """
 
 import numpy as np
@@ -580,6 +605,9 @@ def plot_region_orbit(ferret_name="MWOW_WIND_SPEED_REGION", orbit=1,
     Works with both T-axis and Z-axis variants.  For T-axis data use
     ``/L=`` to select orbits; for Z-axis data use ``/K=``.
 
+    .. note:: Requires a pyferret build without the getsym.F bug.
+       See module docstring for details.  Prefer :func:`mpl_plot_region`.
+
     Parameters
     ----------
     ferret_name : str
@@ -599,3 +627,163 @@ def plot_region_orbit(ferret_name="MWOW_WIND_SPEED_REGION", orbit=1,
     if output:
         pyferret.run(f'frame/file="{output}"')
         print(f"Saved to {output}")
+
+
+# ---------------------------------------------------------------------------
+# Matplotlib plot functions (recommended — no native Ferret plotting bug)
+# ---------------------------------------------------------------------------
+
+def _ferret_time_to_datetime64(time_coords):
+    """Convert pyferret (N, 6) int time array to numpy datetime64 array.
+
+    Parameters
+    ----------
+    time_coords : ndarray of shape (N, 6)
+        Columns: [day, month, year, hour, minute, second].
+
+    Returns
+    -------
+    ndarray of datetime64[s]
+    """
+    times = []
+    for row in time_coords:
+        day, month, year, hour, minute, second = (
+            int(row[pyferret.TIMEARRAY_DAYINDEX]),
+            int(row[pyferret.TIMEARRAY_MONTHINDEX]),
+            int(row[pyferret.TIMEARRAY_YEARINDEX]),
+            int(row[pyferret.TIMEARRAY_HOURINDEX]),
+            int(row[pyferret.TIMEARRAY_MINUTEINDEX]),
+            int(row[pyferret.TIMEARRAY_SECONDINDEX]),
+        )
+        times.append(np.datetime64(
+            f"{year:04d}-{month:02d}-{day:02d}"
+            f"T{hour:02d}:{minute:02d}:{second:02d}"
+        ))
+    return np.array(times)
+
+
+def mpl_plot_timeseries(ferret_name="MWOW_WIND_SPEED_POINT", output=None,
+                        title=None, vmin=None, vmax=None):
+    """Plot a point time series using matplotlib.
+
+    Retrieves data from a loaded Ferret variable (created by
+    :func:`load_mwow_point` or :func:`load_mwow_point_z`) and plots
+    wind speed vs. time as a scatter plot.
+
+    Parameters
+    ----------
+    ferret_name : str
+        Ferret variable name (default from load_mwow_point).
+    output : str, optional
+        Save plot to this path (PNG, PDF, etc.).  If None, calls plt.show().
+    title : str, optional
+        Plot title.  Defaults to the Ferret variable title.
+    vmin, vmax : float, optional
+        Y-axis limits.
+    """
+    import matplotlib.pyplot as plt
+
+    info = pyferret.getdata(ferret_name, create_mask=True)
+    data = info["data"].squeeze()  # (N,) masked array after removing size-1 axes
+
+    # Find the time axis
+    time_idx = None
+    for i, atype in enumerate(info["axis_types"]):
+        if atype == pyferret.AXISTYPE_TIME:
+            time_idx = i
+            break
+
+    if time_idx is not None:
+        times = _ferret_time_to_datetime64(info["axis_coords"][time_idx])
+    else:
+        # Z-axis variant — use orbit index
+        times = np.arange(len(data))
+
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.scatter(times, data, c=np.arange(len(data)), s=20)
+    ax.set_xlabel("Time of Observation [UTC]" if time_idx is not None
+                  else "Orbit Index")
+    ax.set_ylabel(info.get("data_unit", ""))
+    ax.set_title(title or info.get("title", ferret_name))
+    if vmin is not None or vmax is not None:
+        ax.set_ylim(vmin, vmax)
+    ax.grid(True)
+    fig.tight_layout()
+
+    if output:
+        fig.savefig(output, dpi=150)
+        plt.close(fig)
+        print(f"Saved to {output}")
+    else:
+        plt.show()
+
+
+def mpl_plot_region(ferret_name="MWOW_WIND_SPEED_REGION", orbit=1,
+                    output=None, title=None, palette="viridis",
+                    vmin=None, vmax=None):
+    """Shade-plot one orbit of a region variable using matplotlib.
+
+    Retrieves data from a loaded Ferret variable (created by
+    :func:`load_mwow_region` or :func:`load_mwow_region_z`) and plots
+    a single orbit slice as a filled contour map.
+
+    Parameters
+    ----------
+    ferret_name : str
+        Ferret variable name.
+    orbit : int
+        Orbit index (1-based).
+    output : str, optional
+        Save plot to this path.  If None, calls plt.show().
+    title : str, optional
+        Plot title.
+    palette : str
+        Matplotlib colormap name (default "viridis").
+    vmin, vmax : float, optional
+        Color scale limits.
+    """
+    import matplotlib.pyplot as plt
+
+    info = pyferret.getdata(ferret_name, create_mask=True)
+    # pyferret returns a 6D array (X, Y, Z, T, E, F) with size-1 axes
+    # for unused dimensions.  Identify the real axes.
+    data = info["data"]
+
+    # Find lon, lat, and orbit (time or custom) axis indices
+    lon_idx = lat_idx = orbit_idx = None
+    for i, atype in enumerate(info["axis_types"]):
+        if atype == pyferret.AXISTYPE_LONGITUDE:
+            lon_idx = i
+        elif atype == pyferret.AXISTYPE_LATITUDE:
+            lat_idx = i
+        elif atype in (pyferret.AXISTYPE_TIME, pyferret.AXISTYPE_CUSTOM):
+            if info["axis_coords"][i] is not None:
+                orbit_idx = i
+
+    lon = info["axis_coords"][lon_idx]
+    lat = info["axis_coords"][lat_idx]
+
+    # Select the requested orbit (convert 1-based to 0-based)
+    slices = [slice(None)] * data.ndim
+    slices[orbit_idx] = orbit - 1
+    slice_2d = data[tuple(slices)].squeeze()  # → (lon, lat)
+
+    # Transpose to (lat, lon) for pcolormesh (rows=lat, cols=lon)
+    slice_2d = slice_2d.T
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    mesh = ax.pcolormesh(lon, lat, slice_2d, cmap=palette,
+                         vmin=vmin, vmax=vmax, shading="nearest")
+    fig.colorbar(mesh, ax=ax, label=info.get("data_unit", ""))
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title(title or f"{info.get('title', ferret_name)} – Pass {orbit}")
+    ax.set_aspect("equal")
+    fig.tight_layout()
+
+    if output:
+        fig.savefig(output, dpi=150)
+        plt.close(fig)
+        print(f"Saved to {output}")
+    else:
+        plt.show()
