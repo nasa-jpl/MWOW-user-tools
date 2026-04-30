@@ -13,7 +13,7 @@ This repository provides:
 
 | Tool | Language | Description |
 |------|----------|-------------|
-| **mwow_tools** | Python package | Reusable functions for opening files, extracting time series, matching ship tracks, and selecting regions |
+| **mwow_tools** | Python package | Reusable functions for opening files, extracting time series, matching ship tracks, selecting regions, inter-sensor collocation, comparison statistics/plots, and regional video generation |
 | **mwow-tools** | CLI | Command-line interface for quick extraction and plotting |
 | **ferret/** | pyFerret / Ferret | Bridge module, journal scripts, and descriptor template for NOAA Ferret users |
 | **examples/** | Jupyter + MATLAB | Worked examples with inline plots |
@@ -115,6 +115,38 @@ ds_ship = match_ship_track(ds,
 
 # 3. Select a region (10° x 10° box centered at -38, 70)
 ds_region = select_region(ds, lat_center=-38, lon_center=70, lat_size=5, lon_size=5)
+```
+
+### Sensor comparison
+
+```python
+from mwow_tools import find_collocations, plot_joint_histogram, plot_qi_sensitivity
+import xarray as xr
+
+ds = xr.open_dataset("/data/mwow/MWOW_L3_20260115T06_20260115T12_EPI_v0.2.nc")
+
+# Find ASCAT-collocated observations for HY-2B (within ±30 min)
+result = find_collocations(ds, "HY-2B")
+
+# Plot 2D joint histogram with bias/std
+plot_joint_histogram(result["ref_speed"], result["target_speed"], "HY-2B",
+                     save_path="hy2b_vs_ascat.png")
+
+# QI sensitivity (side-by-side panels at QI=0, <=1, <=2)
+plot_qi_sensitivity(result, "HY-2B", save_path="hy2b_qi_sensitivity.png")
+```
+
+### Regional video
+
+```python
+from mwow_tools import generate_region_video
+import glob
+
+files = sorted(glob.glob("/data/mwow/MWOW_L3_*_EPI_v0.2.nc"))
+region = {"lat_center": 14.0, "lon_center": -95.0, "lat_size": 4.0, "lon_size": 5.0}
+
+generate_region_video(files, region, output_name="tehuantepec.mp4",
+                      speedup=3600, utc_offset=-6)
 ```
 
 ### Command line
@@ -295,6 +327,57 @@ Select a geographic box and optionally drop orbits that have no data in the regi
 - **drop_empty_orbits**: Remove all-NaN orbit slices (default True)
 - **Returns**: `xarray.Dataset` for the selected region
 
+### `mwow_tools.find_collocations(ds, target_sensor, ref_sensors=("ASCAT-B", "ASCAT-C"), max_dt_minutes=30, qi_max=None)`
+
+Find temporally collocated observations between sensors on the MWOW grid.
+For each grid cell where both reference and target sensors have valid data
+within the time window, returns matched speed/direction/QI arrays.
+
+- **ds**: MWOW dataset
+- **target_sensor**: Sensor name (e.g. `"HY-2B"`) or integer ID
+- **ref_sensors**: Reference sensor(s) (default ASCAT-B/C combined)
+- **max_dt_minutes**: Maximum time difference in minutes (default 30)
+- **qi_max**: If set, only include target obs with `quality_indicator <= qi_max`
+- **Returns**: dict with arrays `ref_speed`, `target_speed`, `ref_direction`, `target_direction`, `target_qi`, `dt_minutes`, `lat`, `lon`, `time`
+
+### `mwow_tools.collocate_files(file_paths, target_sensor, ...)`
+
+Convenience wrapper that runs `find_collocations` one file at a time and
+concatenates results.  Same parameters as `find_collocations` plus `file_paths`.
+
+### `mwow_tools.plot_joint_histogram(ref_speed, target_speed, target_name, ...)`
+
+Plot a 2D joint histogram of wind speed with log-color density, 1:1 line,
+and bias/std annotation.
+
+- **ref_speed**, **target_speed**: Matched speed arrays
+- **target_name**: Sensor name for labels
+- **bins**: Number of bins per axis (default 60)
+- **speed_range**: (min, max) speed in m/s (default (0, 30))
+- **save_path**: If provided, save figure to this path
+- **Returns**: matplotlib Axes
+
+### `mwow_tools.plot_qi_sensitivity(collocation_result, target_name, qi_levels=(0, 1, 2), ...)`
+
+Plot joint histograms at multiple QI thresholds side by side.
+
+- **collocation_result**: Output of `find_collocations`
+- **target_name**: Sensor name
+- **qi_levels**: QI thresholds for each panel
+- **Returns**: matplotlib Figure
+
+### `mwow_tools.generate_region_video(file_paths, region, ...)`
+
+Generate a time-lapse video of orbit passes over a geographic region.
+Frame dwell times are proportional to real inter-observation intervals.
+
+- **file_paths**: MWOW file paths
+- **region**: dict with `lat_center`, `lon_center`, `lat_size`, `lon_size`
+- **speedup**: Real seconds per video second (default 3600)
+- **utc_offset**: Hours from UTC for clock overlay
+- **qi_max**: Quality filter (default 0)
+- **Returns**: Path to output MP4 file
+
 
 ## Repository structure
 
@@ -307,6 +390,9 @@ mwow-user-tools/
 ├── mwow_tools/             # Python package
 │   ├── __init__.py
 │   ├── reader.py           # Core data access functions
+│   ├── collocate.py        # Inter-sensor temporal collocation
+│   ├── sensor_comparison.py # Joint histograms, bias/std, QI analysis
+│   ├── video.py            # Regional wind field video generation
 │   └── cli.py              # Command-line interface
 ├── ferret/                 # pyFerret / Ferret integration
 │   ├── mwow_ferret.py      # Python bridge module

@@ -2,7 +2,8 @@
 mwow_tools - Tools for accessing and visualizing MWOW ocean wind data products.
 
 Provides functions to open MWOW NetCDF files and extract time series by point,
-ship track, or geographic region.
+ship track, or geographic region, as well as inter-sensor collocation and
+comparison utilities.
 """
 
 from mwow_tools.reader import (
@@ -12,11 +13,40 @@ from mwow_tools.reader import (
     select_region,
 )
 
-__version__ = "0.1.0"
+from mwow_tools.collocate import (
+    find_collocations,
+    collocate_files,
+    collocate_files_multi,
+    SENSOR_IDS,
+    SENSOR_NAMES,
+)
+
+from mwow_tools.sensor_comparison import (
+    compute_stats,
+    joint_histogram,
+    plot_joint_histogram,
+    plot_qi_sensitivity,
+    qi_sensitivity_table,
+)
+
+from mwow_tools.video import generate_region_video
+
+__version__ = "0.2.0"
 
 __all__ = [
     "open_mwow_files",
     "select_point",
     "match_ship_track",
     "select_region",
+    "find_collocations",
+    "collocate_files",
+    "collocate_files_multi",
+    "SENSOR_IDS",
+    "SENSOR_NAMES",
+    "compute_stats",
+    "joint_histogram",
+    "plot_joint_histogram",
+    "plot_qi_sensitivity",
+    "qi_sensitivity_table",
+    "generate_region_video",
 ]
