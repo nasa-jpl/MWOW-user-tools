@@ -14,21 +14,41 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 from mwow_tools.reader import open_mwow_files, select_region
 from mwow_tools.collocate import SENSOR_NAMES
 
 
+# Custom colormap: black → dark blue → blue → cyan → green → yellow → orange → red
+_MWOW_JET_COLORS = [
+    (0.00, (0.0, 0.0, 0.0)),
+    (0.15, (0.0, 0.0, 0.5)),
+    (0.30, (0.0, 0.0, 1.0)),
+    (0.40, (0.0, 1.0, 1.0)),
+    (0.55, (0.0, 1.0, 0.0)),
+    (0.70, (1.0, 1.0, 0.0)),
+    (0.85, (1.0, 0.5, 0.0)),
+    (1.00, (1.0, 0.0, 0.0)),
+]
+
+MWOW_JET_CMAP = LinearSegmentedColormap.from_list(
+    "mwow_jet",
+    [(pos, col) for pos, col in _MWOW_JET_COLORS])
+
+
 def generate_region_video(file_paths, region, output_dir=".",
                           output_name="region_video.mp4",
                           speedup=3600, fps=10, dpi=150,
-                          speed_range=(0, 25), cmap="YlOrRd",
-                          utc_offset=0, qi_max=0,
-                          title=None):
+                          speed_range=(0, 25), cmap=None,
+                          utc_offset=0, qi_max=1,
+                          title=None, arrow_subsample=None):
     """Generate a video of orbit passes over a geographic region.
 
-    Each frame shows one orbit's wind speed field.  The dwell time of each
+    Each frame shows one orbit's wind speed field with coastlines,
+    lat/lon gridlines, and wind direction arrows.  The dwell time of each
     frame is proportional to the real elapsed time until the next observation,
     so temporal gaps are visually represented.
 
@@ -53,21 +73,28 @@ def generate_region_video(file_paths, region, output_dir=".",
         Figure DPI for frames (default 150).
     speed_range : tuple, optional
         (vmin, vmax) for the wind speed colorbar in m/s (default (0, 25)).
-    cmap : str, optional
-        Colormap for wind speed (default "YlOrRd").
+    cmap : str or Colormap or None, optional
+        Colormap for wind speed.  If None, uses the built-in mwow_jet
+        (black → blue → cyan → green → yellow → orange → red).
     utc_offset : int, optional
         Hours offset from UTC for the local time clock overlay (default 0).
     qi_max : int or None, optional
-        Maximum quality_indicator to display (default 0).  Set to None
+        Maximum quality_indicator to display (default 1).  Set to None
         to show all data.
     title : str or None, optional
         Title for the video frames.  If None, auto-generated from region.
+    arrow_subsample : int or None, optional
+        Subsample factor for wind direction arrows.  If None, auto-computed
+        to give ~12 arrows across the plot.
 
     Returns
     -------
     str or None
         Path to the output video file, or None if no data/encoding failed.
     """
+    if cmap is None:
+        cmap = MWOW_JET_CMAP
+
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, output_name)
 
@@ -87,17 +114,25 @@ def generate_region_video(file_paths, region, output_dir=".",
         return None
 
     # Compute data eagerly for frame generation
-    print("  Loading wind speed and time data...")
-    wind_speed = ds_region.wind_speed.values  # (orbit, lat, lon)
+    print("  Loading wind speed, direction, and time data...")
+    wind_speed = ds_region.wind_speed.values      # (orbit, lat, lon)
+    wind_dir = ds_region.wind_direction.values    # (orbit, lat, lon)
     qi = ds_region.quality_indicator.values
-    time_data = ds_region.time.values         # (orbit, lat, lon)
-    sensor_ids = ds_region.sensor_id.values   # (orbit,)
+    time_data = ds_region.time.values             # (orbit, lat, lon)
+    sensor_ids = ds_region.sensor_id.values       # (orbit,)
     lats = ds_region.latitude.values
     lons = ds_region.longitude.values
 
     # Apply QI filter
     if qi_max is not None:
-        wind_speed = np.where(qi <= qi_max, wind_speed, np.nan)
+        mask = qi <= qi_max
+        wind_speed = np.where(mask, wind_speed, np.nan)
+        wind_dir = np.where(mask, wind_dir, np.nan)
+
+    # Compute arrow subsample factor
+    n_lon_cells = len(lons)
+    if arrow_subsample is None:
+        arrow_subsample = max(1, n_lon_cells // 12)
 
     # Get representative time per orbit (median of valid times)
     orbit_times = []
@@ -121,8 +156,8 @@ def generate_region_video(file_paths, region, output_dir=".",
         return None
 
     # Compute frame durations based on inter-observation time
-    frame_durations = []  # in seconds of video time
-    min_frame_duration = 1.0 / fps  # at least one frame
+    frame_durations = []
+    min_frame_duration = 1.0 / fps
     for i in range(len(valid_indices)):
         if i < len(valid_indices) - 1:
             dt_real = (orbit_times[valid_indices[i + 1]] -
@@ -130,7 +165,7 @@ def generate_region_video(file_paths, region, output_dir=".",
             dt_seconds = dt_real / np.timedelta64(1, "s")
             video_seconds = max(dt_seconds / speedup, min_frame_duration)
         else:
-            video_seconds = min_frame_duration * 3  # Linger on last frame
+            video_seconds = min_frame_duration * 3
         frame_durations.append(video_seconds)
 
     # Generate frames
@@ -151,16 +186,56 @@ def generate_region_video(file_paths, region, output_dir=".",
     frame_repeat_counts = []
 
     norm = Normalize(vmin=speed_range[0], vmax=speed_range[1])
+    projection = ccrs.PlateCarree()
+
+    # Precompute subsampled coordinate grids for arrows
+    lon_sub = lons[::arrow_subsample]
+    lat_sub = lats[::arrow_subsample]
+    lon_mesh, lat_mesh = np.meshgrid(lon_sub, lat_sub)
 
     for frame_num, orb_idx in enumerate(valid_indices):
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize=(8, 6),
+                               subplot_kw={"projection": projection})
 
+        ax.set_extent([lons[0], lons[-1], lats[0], lats[-1]], crs=projection)
+
+        # Land and coastlines
+        ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=1)
+        ax.coastlines(resolution="10m", linewidth=0.8, zorder=3)
+
+        # Wind speed pcolormesh
         spd = wind_speed[orb_idx]
         im = ax.pcolormesh(
             lons, lats, spd,
-            cmap=cmap, norm=norm, shading="nearest")
+            cmap=cmap, norm=norm, shading="nearest",
+            transform=projection, zorder=2)
 
-        fig.colorbar(im, ax=ax, label="Wind Speed [m/s]", shrink=0.8)
+        # Wind direction arrows (subsampled)
+        spd_sub = spd[::arrow_subsample, ::arrow_subsample]
+        dir_sub = wind_dir[orb_idx, ::arrow_subsample, ::arrow_subsample]
+
+        # Direction-to: u = speed * sin(dir), v = speed * cos(dir)
+        dir_rad = np.deg2rad(dir_sub)
+        u = np.sin(dir_rad)
+        v = np.cos(dir_rad)
+
+        # Only plot arrows where we have valid speed data
+        arrow_mask = np.isfinite(spd_sub) & np.isfinite(dir_sub)
+        u_plot = np.where(arrow_mask, u, np.nan)
+        v_plot = np.where(arrow_mask, v, np.nan)
+
+        ax.quiver(lon_mesh, lat_mesh, u_plot, v_plot,
+                  scale=25, width=0.003, headwidth=3, headlength=4,
+                  color="white", alpha=0.8, transform=projection, zorder=4)
+
+        # Lat/lon gridlines
+        gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="gray",
+                          alpha=0.5, linestyle="--", zorder=5)
+        gl.top_labels = False
+        gl.right_labels = False
+
+        # Colorbar
+        fig.colorbar(im, ax=ax, label="Wind Speed [m/s]", shrink=0.8, pad=0.08)
 
         # Sensor name annotation
         sid = sensor_ids[orb_idx]
@@ -177,11 +252,8 @@ def generate_region_video(file_paths, region, output_dir=".",
             ax.text(0.02, 0.98, f"{time_str} {tz_label}",
                     transform=ax.transAxes, fontsize=9,
                     verticalalignment="top",
-                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
-
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
-        ax.set_aspect("equal")
+                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+                    zorder=6)
 
         frame_path = os.path.join(tmpdir, f"frame_{frame_num:05d}.png")
         fig.savefig(frame_path, dpi=dpi, bbox_inches="tight")
@@ -207,7 +279,6 @@ def generate_region_video(file_paths, region, output_dir=".",
 
     # Encode video
     print("  Encoding video with ffmpeg...")
-    # pad filter ensures dimensions are divisible by 2 (required by libx264)
     vf = f"fps={fps},pad=ceil(iw/2)*2:ceil(ih/2)*2"
     cmd = [
         "ffmpeg", "-y", "-f", "concat", "-safe", "0",
@@ -220,7 +291,6 @@ def generate_region_video(file_paths, region, output_dir=".",
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"  ERROR: ffmpeg failed:\n{result.stderr[:500]}")
-        # Keep frames for debugging
         print(f"  Frames preserved in: {tmpdir}")
         return None
 
