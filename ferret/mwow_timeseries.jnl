@@ -1,30 +1,32 @@
 \ mwow_timeseries.jnl
 \
-\ Plot wind speed from an MWOW file at a single grid point across all orbits.
+\ Plot wind speed from an MWOW v0.2 file at a single grid point across
+\ all orbits (satellite passes).
 \
 \ Usage:
-\   go mwow_timeseries <file_or_pattern> <latitude> <longitude>
+\   go mwow_timeseries <file> <latitude> <longitude>
 \
 \ Examples:
-\   go mwow_timeseries "/data/mwow/MWOW_20260321*.nc" (-54) 90
+\   go mwow_timeseries "/data/mwow/MWOW_L3_20260321T00_20260321T06_EPI_v0.2.nc" (-54) 90
 \   go mwow_timeseries my_mwow_file.nc (-38) 70
 \
 \ Notes:
 \   - Negative latitudes and longitudes must be enclosed in parentheses.
-\   - The orbit dimension is mapped to the Z axis.  Each K index
-\     corresponds to one satellite pass within the 6-hour window.
-\   - Ferret will map longitude->X, latitude->Y, orbit->Z automatically
-\     because MWOW files are CF-compliant.
+\   - MWOW v0.2 NetCDF dimensions are (orbit, latitude, longitude).
+\     The /order=zyx qualifier maps orbit->Z, latitude->Y, longitude->X.
+\   - Each K index corresponds to one satellite pass in the file.
+\   - The plot x-axis shows orbit index (K); use the pyFerret bridge
+\     for time-axis plotting.
 \
 \ Arguments:
-\   $1  MWOW NetCDF file path or pattern
+\   $1  MWOW v0.2 NetCDF file path
 \   $2  Latitude (degrees, negative for south)
 \   $3  Longitude (degrees, negative for west)
 
 cancel mode verify
 
 say *** Loading MWOW data from $1
-use/order=xyz "$1"
+use/order=zyx "$1"
 
 say *** Extracting wind_speed at lat=$2, lon=$3 across all orbits
 

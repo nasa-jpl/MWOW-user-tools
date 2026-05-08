@@ -1,22 +1,24 @@
 \ mwow_region.jnl
 \
-\ Shade-plot wind speed from an MWOW file for a geographic region at a
-\ specific orbit (satellite pass).
+\ Shade-plot wind speed from an MWOW v0.2 file for a geographic region
+\ at a specific orbit (satellite pass).
 \
 \ Usage:
 \   go mwow_region <file> <lat_lo> <lat_hi> <lon_lo> <lon_hi> [<orbit_k>]
 \
 \ Examples:
 \   go mwow_region my_mwow_file.nc (-43) (-33) 65 75 1
-\   go mwow_region "/data/mwow/MWOW_*.nc" (-43) (-33) 65 75
+\   go mwow_region my_mwow_file.nc (-43) (-33) 65 75
 \
 \ Notes:
 \   - Negative values must be enclosed in parentheses.
+\   - MWOW v0.2 NetCDF dimensions are (orbit, latitude, longitude).
+\     The /order=zyx qualifier maps orbit->Z, latitude->Y, longitude->X.
 \   - The orbit index (K) defaults to 1 if not specified.
-\   - MWOW orbit maps to the Z axis; use K= to select passes.
+\   - Use K= to select different satellite passes within the file.
 \
 \ Arguments:
-\   $1  MWOW NetCDF file path
+\   $1  MWOW v0.2 NetCDF file path
 \   $2  Southern latitude limit
 \   $3  Northern latitude limit
 \   $4  Western longitude limit
@@ -26,7 +28,7 @@
 cancel mode verify
 
 say *** Loading MWOW data from $1
-use/order=xyz "$1"
+use/order=zyx "$1"
 
 let orbit_k = $6%1%
 

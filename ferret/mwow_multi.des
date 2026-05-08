@@ -1,31 +1,38 @@
 ************************************************************
-* MWOW Multi-File Descriptor Template
+* MWOW v0.2 Multi-File Descriptor Template
 *
 * This descriptor file allows Ferret to treat a sequence of
-* MWOW NetCDF files as a single aggregated dataset.
+* MWOW v0.2 NetCDF files as a single aggregated dataset.
+* Each file represents one 6-hour time window; the T axis
+* steps through files and the Z axis indexes orbits within
+* each file.
 *
 * HOW TO USE:
 *   1. Copy this file and edit the STEPFILE_RECORD entries
-*      to list your actual MWOW filenames.
-*   2. Set S_NUM_OF_FILES to your file count.
-*   3. In Ferret:  USE mwow_multi.des
+*      to list your actual MWOW filenames (one per 6-hour window).
+*   2. Set S_NUM_OF_FILES to your total file count.
+*   3. In Ferret:
+*        use/order=zyx mwow_multi.des
+*        shade/k=1/l=1 wind_speed
 *
 * NOTES:
-*   - MWOW files use an "orbit" dimension (not time), so the
-*     aggregation axis is abstract.  Each file contributes its
-*     orbits along the Z axis.
+*   - MWOW v0.2 dimensions are (orbit, latitude, longitude).
+*     Use /order=zyx so orbit->Z, latitude->Y, longitude->X.
+*   - L= selects the time window (file), K= selects the orbit
+*     within that window.
+*   - S_START/S_END/S_DELTA define abstract T-axis steps
+*     (one per file). Adjust S_END if your files have varying
+*     numbers of orbits.
 *   - Adjust D_TITLE to describe your dataset.
-*   - S_START / S_END / S_DELTA are in units of D_TIME_UNIT
-*     (here set to 1.0 = abstract count).
 ************************************************************
  $FORMAT_RECORD
  D_TYPE = ' MC',
  D_FORMAT = ' 1A',
  $END
  $BACKGROUND_RECORD
- D_TITLE = 'MWOW Multi-sensor Ocean Winds (user files)',
+ D_TITLE = 'MWOW v0.2 Multi-sensor Ocean Winds',
  D_T0TIME = '01-JAN-2026 00:00:00',
- D_TIME_UNIT = 1.0,
+ D_TIME_UNIT = 6.0,
  D_TIME_MODULO = .FALSE.,
  $END
  $MESSAGE_RECORD
@@ -36,11 +43,32 @@
  $EXTRA_RECORD
  $END
  $STEPFILE_RECORD
- S_FILENAME = '/path/to/MWOW_file_001.nc',
+ S_FILENAME = '/path/to/MWOW_L3_20260321T00_20260321T06_EPI_v0.2.nc',
  S_START = 1.0,
- S_END = 35.0,
+ S_END = 1.0,
  S_DELTA = 1.0,
- S_NUM_OF_FILES = 1,
+ S_NUM_OF_FILES = 4,
+ $END
+ $STEPFILE_RECORD
+ S_FILENAME = '/path/to/MWOW_L3_20260321T06_20260321T12_EPI_v0.2.nc',
+ S_START = 2.0,
+ S_END = 2.0,
+ S_DELTA = 1.0,
+ S_NUM_OF_FILES = 4,
+ $END
+ $STEPFILE_RECORD
+ S_FILENAME = '/path/to/MWOW_L3_20260321T12_20260321T18_EPI_v0.2.nc',
+ S_START = 3.0,
+ S_END = 3.0,
+ S_DELTA = 1.0,
+ S_NUM_OF_FILES = 4,
+ $END
+ $STEPFILE_RECORD
+ S_FILENAME = '/path/to/MWOW_L3_20260321T18_20260322T00_EPI_v0.2.nc',
+ S_START = 4.0,
+ S_END = 4.0,
+ S_DELTA = 1.0,
+ S_NUM_OF_FILES = 4,
  $END
  $STEPFILE_RECORD
  S_FILENAME = '**END OF STEPFILES**'

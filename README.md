@@ -80,17 +80,15 @@ account.
 
 ## Installation
 
-```bash
-git clone git@github-fn.jpl.nasa.gov:MWOW/mwow-user-tools.git
-cd mwow-user-tools
-conda env create -f environment.yml
-conda activate mwow-user-tools
-pip install -e .
-```
+Choose the install guide for your environment:
 
-This creates a Python 3.10 environment with all dependencies including
-pyFerret. See [INSTALL.md](INSTALL.md) for detailed instructions for
-Jupyter, CLI, Python, MATLAB, and pyFerret users.
+| Guide | For |
+|-------|-----|
+| [INSTALL_python.md](INSTALL_python.md) | Python users (xarray, matplotlib, Jupyter, CLI) |
+| [INSTALL_pyferret.md](INSTALL_pyferret.md) | pyFerret users (Python bridge to Ferret) |
+| [INSTALL_ferretCLI.md](INSTALL_ferretCLI.md) | Ferret CLI users (journal scripts, no Python required) |
+| [INSTALL_matlab.md](INSTALL_matlab.md) | MATLAB users |
+| [INSTALL_idl.md](INSTALL_idl.md) | IDL users |
 
 
 ## Quick start
