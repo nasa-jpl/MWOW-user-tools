@@ -63,11 +63,11 @@ You can also browse and download interactively at
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url>
+git clone https://github-fn.jpl.nasa.gov/MWOW/mwow-user-tools.git
 cd mwow-user-tools
 
 # 2. Create a Python environment with all dependencies
-conda create -n mwow python=3.12 numpy xarray netCDF4 dask \
+conda create -n mwow python=3.10 numpy xarray netCDF4 dask \
     matplotlib pandas cartopy ffmpeg jupyter -c conda-forge
 
 # 3. Activate the environment
@@ -88,7 +88,7 @@ If you prefer not to use conda:
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url>
+git clone https://github-fn.jpl.nasa.gov/MWOW/mwow-user-tools.git
 cd mwow-user-tools
 
 # 2. Create and activate a virtual environment
