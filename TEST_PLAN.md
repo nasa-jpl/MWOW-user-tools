@@ -220,7 +220,7 @@ Test the clone-and-install experience as a new user would. Use `script` to recor
 script -q setup_test.log
 # --- everything below is recorded ---
 
-git clone git@github-fn.jpl.nasa.gov:MWOW/mwow-user-tools.git
+git clone https://github.com/nasa-jpl/MWOW-user-tools.git
 cd mwow-user-tools
 
 # Option A: conda

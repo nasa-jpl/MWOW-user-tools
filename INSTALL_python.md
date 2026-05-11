@@ -63,7 +63,7 @@ You can also browse and download interactively at
 
 ```bash
 # 1. Clone the repository
-git clone https://github-fn.jpl.nasa.gov/MWOW/mwow-user-tools.git
+git clone https://github.com/nasa-jpl/MWOW-user-tools.git
 cd mwow-user-tools
 
 # 2. Create a Python environment with all dependencies
@@ -88,7 +88,7 @@ If you prefer not to use conda:
 
 ```bash
 # 1. Clone the repository
-git clone https://github-fn.jpl.nasa.gov/MWOW/mwow-user-tools.git
+git clone https://github.com/nasa-jpl/MWOW-user-tools.git
 cd mwow-user-tools
 
 # 2. Create and activate a virtual environment

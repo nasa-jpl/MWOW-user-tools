@@ -67,7 +67,7 @@ pyFerret on conda-forge requires Python 3.10. The repository includes an
 
 ```bash
 # 1. Clone the repository
-git clone https://github-fn.jpl.nasa.gov/MWOW/mwow-user-tools.git
+git clone https://github.com/nasa-jpl/MWOW-user-tools.git
 cd mwow-user-tools
 
 # 2. Create the conda environment (Python 3.10 + pyFerret + all deps)

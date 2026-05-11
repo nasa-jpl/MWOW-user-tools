@@ -66,7 +66,7 @@ repository and point Ferret to the scripts:
 
 ```bash
 # 1. Clone the repository
-git clone https://github-fn.jpl.nasa.gov/MWOW/mwow-user-tools.git
+git clone https://github.com/nasa-jpl/MWOW-user-tools.git
 cd mwow-user-tools
 
 # 2. Add the ferret/ directory to your FER_GO path
