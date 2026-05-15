@@ -134,6 +134,26 @@ plot_joint_histogram(result["ref_speed"], result["target_speed"], "HY-2B",
 plot_qi_sensitivity(result, "HY-2B", save_path="hy2b_qi_sensitivity.png")
 ```
 
+### Parallel comparison statistics
+
+```python
+from mwow_tools import extract_matched_pairs, comparison_stats
+import glob
+
+files = sorted(glob.glob("/data/mwow/MWOW_L3_*_EPI_v0.2.nc"))
+
+# Extract all time-matched pairs (parallel — uses 48 cores by default)
+pairs = extract_matched_pairs(files, "HY-2B", ("ASCAT-B", "ASCAT-C"))
+
+# Full stats: speed bias/MAD/STD + direction MAD/RMS
+stats_qi0 = comparison_stats(pairs, qi_max=0, min_speed_for_dir=3.0)
+stats_all = comparison_stats(pairs, qi_max=2, min_speed_for_dir=3.0)
+
+# Restrict to a bounding box
+stats_tropics = comparison_stats(pairs, qi_max=0, min_speed_for_dir=3.0,
+    bbox={"lat_min": -30, "lat_max": 30, "lon_min": -180, "lon_max": 180})
+```
+
 ### Regional video
 
 ```python
@@ -364,6 +384,32 @@ Plot joint histograms at multiple QI thresholds side by side.
 - **qi_levels**: QI thresholds for each panel
 - **Returns**: matplotlib Figure
 
+### `mwow_tools.extract_matched_pairs(file_paths, target_sensor, ref_sensors, max_dt_minutes=30, n_workers=48, n_lat=1440)`
+
+Extract all time-matched observation pairs between a target and reference
+sensor using latitude-chunked parallelism.  Each worker reads only its
+latitude slice from disk, keeping memory low while using all cores.
+
+- **file_paths**: MWOW file paths
+- **target_sensor**: Sensor name (e.g. `"HY-2B"`) or integer ID
+- **ref_sensors**: Reference sensor(s) (e.g. `("ASCAT-B", "ASCAT-C")`)
+- **max_dt_minutes**: Maximum time difference (default 30)
+- **n_workers**: Parallel workers (default 48)
+- **Returns**: dict with arrays `ref_speed`, `ref_direction`, `target_speed`, `target_direction`, `target_qi`, `lat`, `lon`
+
+### `mwow_tools.comparison_stats(pairs, qi_max=None, min_speed_for_dir=None, lat_limit=None, bbox=None)`
+
+Compute wind speed and direction comparison statistics from matched pairs.
+Speed stats use all valid pairs; direction stats additionally exclude pairs
+where either speed is below `min_speed_for_dir`.
+
+- **pairs**: Output of `extract_matched_pairs`
+- **qi_max**: Maximum quality_indicator to include
+- **min_speed_for_dir**: Minimum speed for direction stats only (m/s)
+- **lat_limit**: Only include `|lat| < lat_limit`
+- **bbox**: dict with `lat_min`, `lat_max`, `lon_min`, `lon_max`
+- **Returns**: dict with `speed_bias`, `speed_mad`, `speed_std`, `speed_n`, `dir_mad`, `dir_rms`, `dir_n`
+
 ### `mwow_tools.generate_region_video(file_paths, region, ...)`
 
 Generate a time-lapse video of orbit passes over a geographic region.
@@ -389,6 +435,7 @@ mwow-user-tools/
 │   ├── __init__.py
 │   ├── reader.py           # Core data access functions
 │   ├── collocate.py        # Inter-sensor temporal collocation
+│   ├── compare.py          # Parallel comparison stats (speed + direction)
 │   ├── sensor_comparison.py # Joint histograms, bias/std, QI analysis
 │   ├── video.py            # Regional wind field video generation
 │   └── cli.py              # Command-line interface

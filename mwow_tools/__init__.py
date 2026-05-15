@@ -29,6 +29,12 @@ from mwow_tools.sensor_comparison import (
     qi_sensitivity_table,
 )
 
+from mwow_tools.compare import (
+    extract_matched_pairs,
+    comparison_stats,
+    circular_abs_diff,
+)
+
 from mwow_tools.video import generate_region_video
 
 __version__ = "0.2.0"
@@ -48,5 +54,8 @@ __all__ = [
     "plot_joint_histogram",
     "plot_qi_sensitivity",
     "qi_sensitivity_table",
+    "extract_matched_pairs",
+    "comparison_stats",
+    "circular_abs_diff",
     "generate_region_video",
 ]
