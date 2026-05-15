@@ -145,7 +145,7 @@ def generate_region_video(file_paths, region, output_dir=".",
             orbit_times.append(np.datetime64("NaT"))
     orbit_times = np.array(orbit_times)
 
-    # Sort by time, excluding NaT
+    # Sort by time, excluding NaT (empty orbits with no observations)
     valid_time_mask = ~np.isnat(orbit_times)
     valid_indices = np.where(valid_time_mask)[0]
     sort_order = np.argsort(orbit_times[valid_indices])
@@ -239,8 +239,13 @@ def generate_region_video(file_paths, region, output_dir=".",
 
         # Sensor name annotation
         sid = sensor_ids[orb_idx]
-        sensor_name = SENSOR_NAMES.get(int(sid), f"ID={sid:.0f}") if \
-            np.isfinite(sid) else "Unknown"
+        if not np.isfinite(sid):
+            print(f"  ERROR: Orbit {orb_idx} has valid time data but NaN "
+                  f"sensor_id. This indicates a corrupt or malformed file — "
+                  f"all orbits with observations should have a sensor_id.")
+            sensor_name = "Unknown"
+        else:
+            sensor_name = SENSOR_NAMES.get(int(sid), f"ID={sid:.0f}")
         ax.set_title(f"{title}\n{sensor_name}", fontsize=10)
 
         # Local time clock overlay
