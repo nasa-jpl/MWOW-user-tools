@@ -1,0 +1,55 @@
+\ mwow_wind_map.jnl — Plot a spatial wind map from an MWOW L3 file.
+\
+\ Usage:
+\   go mwow_wind_map "filename.nc" lat_lo lat_hi lon_lo lon_hi orbit [variable] [palette]
+\
+\ Arguments:
+\   $1  - Path to MWOW L3 NetCDF file
+\   $2  - Southern latitude bound (use parentheses for negative, e.g. (-40))
+\   $3  - Northern latitude bound
+\   $4  - Western longitude bound (use parentheses for negative, e.g. (-100))
+\   $5  - Eastern longitude bound
+\   $6  - Orbit index (1-based)
+\   $7  - Variable name (optional, default: wind_speed)
+\   $8  - Palette (optional, default: viridis for speed, no_green_centered for direction)
+\
+\ Examples:
+\   go mwow_wind_map "/data/MWOW_L3_20260101T00_20260101T06_EPI_v0.2.nc" 10 18 (-100) (-90) 1
+\   go mwow_wind_map "/data/file.nc" (-60) 60 (-180) 180 3 wind_direction
+\   go mwow_wind_map "/data/file.nc" 30 50 (-30) 0 1 wind_speed viridis
+
+cancel data/all
+cancel variable/all
+
+use "$1"
+
+! Set variable (default: wind_speed)
+define symbol mwow_var = $7"wind_speed"
+
+! Set palette based on variable
+IF ($mwow_var"|wind_direction>true|*>false") THEN
+    define symbol mwow_pal = $8"no_green_centered"
+    define symbol mwow_lev = (0,360,15)
+    define symbol mwow_title = Wind Direction [deg]
+ELIF ($mwow_var"|u>true|*>false") THEN
+    define symbol mwow_pal = $8"blue_darkred"
+    define symbol mwow_lev = (-25,25,2)
+    define symbol mwow_title = Zonal Wind (u) [m/s]
+    let mwow_plot_var = -1.0 * wind_speed * sin(wind_direction * 3.14159/180.0)
+ELIF ($mwow_var"|v>true|*>false") THEN
+    define symbol mwow_pal = $8"blue_darkred"
+    define symbol mwow_lev = (-25,25,2)
+    define symbol mwow_title = Meridional Wind (v) [m/s]
+    let mwow_plot_var = -1.0 * wind_speed * cos(wind_direction * 3.14159/180.0)
+ELSE
+    define symbol mwow_pal = $8"viridis"
+    define symbol mwow_lev = (0,25,1)
+    define symbol mwow_title = Wind Speed [m/s]
+ENDIF
+
+! Plot
+IF ($mwow_var"|u>true|v>true|*>false") THEN
+    shade/palette=($mwow_pal)/levels=($mwow_lev)/title="($mwow_title) – Orbit $6" mwow_plot_var[k=$6,y=$2:$3,x=$4:$5]
+ELSE
+    shade/palette=($mwow_pal)/levels=($mwow_lev)/title="($mwow_title) – Orbit $6" ($mwow_var)[k=$6,y=$2:$3,x=$4:$5]
+ENDIF

@@ -154,6 +154,29 @@ stats_tropics = comparison_stats(pairs, qi_max=0, min_speed_for_dir=3.0,
     bbox={"lat_min": -30, "lat_max": 30, "lon_min": -180, "lon_max": 180})
 ```
 
+### Spatial wind map
+
+```python
+from mwow_tools import open_mwow_files, plot_wind_map
+
+ds = open_mwow_files("/data/mwow/MWOW_L3_20260115T06_20260115T12_EPI_v0.2.nc")
+
+# Wind speed + direction arrows (default)
+plot_wind_map(ds, region={"lat_center": 14, "lon_center": -95,
+                          "lat_size": 4, "lon_size": 5},
+              save_path="tehuantepec_wind.png")
+
+# Wind direction with cyclic colormap (no arrows)
+plot_wind_map(ds, region={"lat_center": 14, "lon_center": -95,
+                          "lat_size": 4, "lon_size": 5},
+              variable="wind_direction", arrows=False,
+              save_path="tehuantepec_dir.png")
+
+# Composite all orbits (vector average), filter to ASCAT only
+plot_wind_map(ds, composite="mean", sensor_ids=["ASCAT-B", "ASCAT-C"],
+              save_path="ascat_composite.png")
+```
+
 ### Regional video
 
 ```python
@@ -410,6 +433,22 @@ where either speed is below `min_speed_for_dir`.
 - **bbox**: dict with `lat_min`, `lat_max`, `lon_min`, `lon_max`
 - **Returns**: dict with `speed_bias`, `speed_mad`, `speed_std`, `speed_n`, `dir_mad`, `dir_rms`, `dir_n`
 
+### `mwow_tools.plot_wind_map(ds, region=None, orbits=None, composite="last", variable="wind_speed", arrows=True, ...)`
+
+Plot a geographic wind map with coastlines, gridlines, and optional
+direction arrows.  Supports orbit compositing and sensor/QI filtering.
+
+- **ds**: MWOW dataset
+- **region**: dict with `lat_center`, `lon_center`, `lat_size`, `lon_size` (optional)
+- **composite**: "last" (default) or "mean" (vector average for direction)
+- **variable**: "wind_speed" (default), "wind_direction" (cyclic cmap), "u", "v", or any variable in ds
+- **arrows**: Overlay wind direction quiver arrows (default True)
+- **qi_max**: Max quality_indicator (default 2)
+- **sensor_ids**: Filter to specific sensors (list of names or IDs)
+- **speed_range**: (vmin, vmax) for colorbar (default (0, 25))
+- **save_path**: Save figure to file
+- **Returns**: matplotlib GeoAxes
+
 ### `mwow_tools.generate_region_video(file_paths, region, ...)`
 
 Generate a time-lapse video of orbit passes over a geographic region.
@@ -436,6 +475,7 @@ mwow-user-tools/
 │   ├── reader.py           # Core data access functions
 │   ├── collocate.py        # Inter-sensor temporal collocation
 │   ├── compare.py          # Parallel comparison stats (speed + direction)
+│   ├── spatial.py          # Geographic wind maps (Cartopy + quiver)
 │   ├── sensor_comparison.py # Joint histograms, bias/std, QI analysis
 │   ├── video.py            # Regional wind field video generation
 │   └── cli.py              # Command-line interface
@@ -444,6 +484,7 @@ mwow-user-tools/
 │   ├── mwow_pyferret_examples.py
 │   ├── mwow_timeseries.jnl # Ferret journal: point time series
 │   ├── mwow_region.jnl     # Ferret journal: regional plot
+│   ├── mwow_wind_map.jnl  # Ferret journal: spatial wind map
 │   └── mwow_multi.des      # Multi-file descriptor template
 └── examples/               # Worked examples
     ├── mwow_example_scripts.ipynb

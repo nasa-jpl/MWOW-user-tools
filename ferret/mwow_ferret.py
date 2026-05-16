@@ -787,3 +787,116 @@ def mpl_plot_region(ferret_name="MWOW_WIND_SPEED_REGION", orbit=1,
         print(f"Saved to {output}")
     else:
         plt.show()
+
+
+def plot_wind_map(ferret_name=None, orbit=1, variable="wind_speed",
+                  region=None, palette=None, levels=None,
+                  title=None, output=None):
+    """Plot a spatial wind map using native Ferret shade command.
+
+    Uses Ferret's built-in geographic axis handling which automatically
+    provides coastlines and proper map formatting.
+
+    Parameters
+    ----------
+    ferret_name : str or None
+        Base Ferret variable name (e.g. "MWOW_WIND_SPEED_REGION").
+        If None, auto-detects from loaded variables based on ``variable``.
+    orbit : int, optional
+        Orbit index (1-based, default 1).
+    variable : str, optional
+        Which field to plot: "wind_speed" (default), "wind_direction",
+        "u", "v", or a raw Ferret variable name.
+    region : dict or None, optional
+        Spatial subset: {lon_min, lon_max, lat_min, lat_max}.
+        Applied as /X= and /Y= qualifiers.  If None, plots full extent.
+    palette : str or None, optional
+        Ferret palette name.  Auto-selected if None:
+        "viridis" for speed, "no_green_centered" for direction,
+        "blue_darkred" for u/v.
+    levels : str or None, optional
+        Ferret LEVELS specification (e.g. "(0,25,1)" for speed,
+        "(0,360,15)" for direction).  Auto-set if None.
+    title : str or None, optional
+        Plot title.  Auto-generated if None.
+    output : str or None, optional
+        Save plot to file (PNG or PDF).
+
+    Notes
+    -----
+    Requires pyferret and data loaded via :func:`load_mwow`,
+    :func:`load_mwow_region`, or their Z-axis variants.
+
+    The native ``shade`` command has a known bug in pyferret 7.6.5 on
+    conda-forge (getsym.F line 95 crash).  If this function fails, use
+    :func:`mpl_plot_region` as a fallback.
+    """
+    # Determine variable name and settings
+    var_map = {
+        "wind_speed": ("MWOW_WIND_SPEED", "viridis", "(0,25,1)",
+                       "Wind Speed [m/s]"),
+        "wind_direction": ("MWOW_WIND_DIRECTION", "no_green_centered",
+                           "(0,360,15)", "Wind Direction [deg]"),
+        "u": ("MWOW_WIND_SPEED", "blue_darkred", "(-25,25,2)",
+              "Zonal Wind (u) [m/s]"),
+        "v": ("MWOW_WIND_SPEED", "blue_darkred", "(-25,25,2)",
+              "Meridional Wind (v) [m/s]"),
+    }
+
+    if variable in var_map:
+        default_name, default_pal, default_lev, default_title = var_map[variable]
+    else:
+        default_name = variable.upper()
+        default_pal = "viridis"
+        default_lev = None
+        default_title = variable
+
+    if ferret_name is None:
+        ferret_name = default_name + "_REGION"
+
+    if palette is None:
+        palette = default_pal
+    if levels is None:
+        levels = default_lev
+    if title is None:
+        title = f"{default_title} – Pass {orbit}"
+
+    # Build shade command
+    qualifiers = [f"palette={palette}"]
+    if levels:
+        qualifiers.append(f"levels={levels}")
+    qualifiers.append(f'title="{title}"')
+    qual_str = "/".join(qualifiers)
+
+    # Build variable expression with subset
+    subset_parts = [f"l={orbit}"]
+
+    if region is not None:
+        if "lon_min" in region and "lon_max" in region:
+            subset_parts.append(f"x={region['lon_min']}:{region['lon_max']}")
+        if "lat_min" in region and "lat_max" in region:
+            subset_parts.append(f"y={region['lat_min']}:{region['lat_max']}")
+
+    subset_str = ",".join(subset_parts)
+
+    # For u/v, compute from speed and direction
+    if variable == "u":
+        spd_var = ferret_name.replace("DIRECTION", "SPEED")
+        dir_var = ferret_name.replace("SPEED", "DIRECTION")
+        pyferret.run(f'let mwow_u_component = '
+                     f'-1.0 * {spd_var} * sin({dir_var} * 3.14159/180.0)')
+        full_expr = f"mwow_u_component[{subset_str}]"
+    elif variable == "v":
+        spd_var = ferret_name.replace("DIRECTION", "SPEED")
+        dir_var = ferret_name.replace("SPEED", "DIRECTION")
+        pyferret.run(f'let mwow_v_component = '
+                     f'-1.0 * {spd_var} * cos({dir_var} * 3.14159/180.0)')
+        full_expr = f"mwow_v_component[{subset_str}]"
+    else:
+        full_expr = f"{ferret_name}[{subset_str}]"
+
+    pyferret.run(f"shade/{qual_str} {full_expr}")
+
+    if output:
+        pyferret.run(f'frame/file="{output}"')
+        print(f"Saved to {output}")

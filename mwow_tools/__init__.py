@@ -35,6 +35,8 @@ from mwow_tools.compare import (
     circular_abs_diff,
 )
 
+from mwow_tools.spatial import plot_wind_map
+
 from mwow_tools.video import generate_region_video
 
 __version__ = "0.2.0"
@@ -57,5 +59,6 @@ __all__ = [
     "extract_matched_pairs",
     "comparison_stats",
     "circular_abs_diff",
+    "plot_wind_map",
     "generate_region_video",
 ]

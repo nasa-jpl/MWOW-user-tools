@@ -99,6 +99,14 @@ for i = 1:n_orbits
 end
 
 
+%% Spatial wind map example
+% Plot a composite wind speed map with direction arrows and coastlines
+ds_region = select_region(DS, lat_center, lon_center, lat_size, lon_size);
+mwow_plot_wind_map(ds_region);
+mwow_plot_wind_map(ds_region, 'Variable', 'wind_direction', 'Arrows', false);
+mwow_plot_wind_map(ds_region, 'Composite', 'mean', 'SavePath', 'wind_map.png');
+
+
 %% =========================================================================
 %% Local functions
 %% =========================================================================
@@ -402,5 +410,318 @@ function keep = deduplicate_orbits(t_vec, ws_vec)
                 break
             end
         end
+    end
+end
+
+
+function mwow_plot_wind_map(DS, varargin)
+% MWOW_PLOT_WIND_MAP  Plot a geographic wind map with coastlines and arrows.
+%
+%   mwow_plot_wind_map(DS)
+%   mwow_plot_wind_map(DS, 'Name', Value, ...)
+%
+%   DS is a struct from select_region or open_mwow_files containing:
+%       .latitude, .longitude, .wind_speed (3D: orbit x lat x lon),
+%       .wind_direction (optional), .quality_indicator (optional),
+%       .sensor_id (optional, per-orbit).
+%
+%   Name-Value Parameters:
+%       'Orbits'          - Orbit indices to include (default: all)
+%       'Composite'       - 'last' (default) or 'mean' (vector average)
+%       'Variable'        - 'wind_speed' (default), 'wind_direction', 'u', 'v'
+%       'Arrows'          - true (default) or false
+%       'ArrowSubsample'  - Integer subsample for arrows (default: auto)
+%       'QIMax'           - Max quality_indicator (default: 2)
+%       'SensorIDs'       - Numeric sensor IDs to include (default: all)
+%       'SpeedRange'      - [vmin vmax] for colorbar (default: [0 25])
+%       'Title'           - Plot title (default: auto)
+%       'SavePath'        - File path to save figure (default: display only)
+%       'Colormap'        - Colormap name or Nx3 matrix (default: auto)
+
+    p = inputParser;
+    addParameter(p, 'Orbits', []);
+    addParameter(p, 'Composite', 'last');
+    addParameter(p, 'Variable', 'wind_speed');
+    addParameter(p, 'Arrows', true);
+    addParameter(p, 'ArrowSubsample', []);
+    addParameter(p, 'QIMax', 2);
+    addParameter(p, 'SensorIDs', []);
+    addParameter(p, 'SpeedRange', [0 25]);
+    addParameter(p, 'Title', '');
+    addParameter(p, 'SavePath', '');
+    addParameter(p, 'Colormap', '');
+    parse(p, varargin{:});
+    opts = p.Results;
+
+    lats = DS.latitude;
+    lons = DS.longitude;
+    n_lat = numel(lats);
+    n_lon = numel(lons);
+    n_orbits = size(DS.wind_speed, 1);
+
+    % Determine orbit indices
+    if isempty(opts.Orbits)
+        orb_idx = 1:n_orbits;
+    else
+        orb_idx = opts.Orbits;
+    end
+
+    % Filter by sensor ID
+    if ~isempty(opts.SensorIDs) && isfield(DS, 'sensor_id')
+        keep = false(size(orb_idx));
+        for k = 1:numel(orb_idx)
+            sid = DS.sensor_id(orb_idx(k));
+            if ~isnan(sid) && ismember(sid, opts.SensorIDs)
+                keep(k) = true;
+            end
+        end
+        orb_idx = orb_idx(keep);
+    end
+
+    if isempty(orb_idx)
+        warning('No orbits match the specified filters.');
+        return
+    end
+
+    % Composite orbits
+    [field, dir_comp] = composite_orbits(DS, orb_idx, opts);
+
+    % Determine colormap and limits
+    if strcmp(opts.Variable, 'wind_direction')
+        clims = [0 360];
+        cbar_label = 'Wind Direction [deg]';
+        if isempty(opts.Colormap)
+            cmap = hsv(256);
+        else
+            cmap = resolve_colormap(opts.Colormap);
+        end
+    elseif strcmp(opts.Variable, 'u') || strcmp(opts.Variable, 'v')
+        vmax = max(abs(opts.SpeedRange));
+        clims = [-vmax vmax];
+        if strcmp(opts.Variable, 'u')
+            cbar_label = 'Zonal Wind (u) [m/s]';
+        else
+            cbar_label = 'Meridional Wind (v) [m/s]';
+        end
+        if isempty(opts.Colormap)
+            cmap = blue_white_red(256);
+        else
+            cmap = resolve_colormap(opts.Colormap);
+        end
+    else
+        clims = opts.SpeedRange;
+        cbar_label = 'Wind Speed [m/s]';
+        if isempty(opts.Colormap)
+            cmap = mwow_jet_colormap(256);
+        else
+            cmap = resolve_colormap(opts.Colormap);
+        end
+    end
+
+    % Create figure
+    figure('Position', [100 100 900 650], 'Color', 'w');
+
+    % Plot field
+    pcolor(lons, lats, field);
+    shading flat;
+    hold on;
+    colormap(cmap);
+    caxis(clims);
+    cb = colorbar;
+    cb.Label.String = cbar_label;
+
+    % Coastlines (MATLAB built-in coast data)
+    try
+        coast = load('coast');
+        plot(coast.long, coast.lat, 'k-', 'LineWidth', 0.8);
+    catch
+        % coast.mat not available; skip coastlines
+    end
+
+    % Wind direction arrows
+    if opts.Arrows && ~isempty(dir_comp)
+        if isempty(opts.ArrowSubsample)
+            sub = max(1, floor(n_lon / 15));
+        else
+            sub = opts.ArrowSubsample;
+        end
+
+        lon_sub = lons(1:sub:end);
+        lat_sub = lats(1:sub:end);
+        [lon_mesh, lat_mesh] = meshgrid(lon_sub, lat_sub);
+
+        dir_sub = dir_comp(1:sub:end, 1:sub:end);
+        spd_sub = field(1:sub:end, 1:sub:end);
+
+        dir_rad = deg2rad(dir_sub);
+        u_arr = sin(dir_rad);
+        v_arr = cos(dir_rad);
+
+        % Mask where no data
+        mask = isfinite(spd_sub) & isfinite(dir_sub);
+        u_arr(~mask) = NaN;
+        v_arr(~mask) = NaN;
+
+        quiver(lon_mesh, lat_mesh, u_arr, v_arr, 0.5, ...
+            'Color', 'w', 'LineWidth', 0.8);
+    end
+
+    % Axis formatting
+    axis equal tight;
+    xlabel('Longitude [deg]');
+    ylabel('Latitude [deg]');
+    grid on;
+    set(gca, 'Layer', 'top');
+
+    % Title
+    if isempty(opts.Title)
+        opts.Title = strrep(cbar_label, ' [m/s]', '');
+        opts.Title = strrep(opts.Title, ' [deg]', '');
+    end
+    title(opts.Title, 'FontWeight', 'bold');
+
+    hold off;
+
+    % Save if requested
+    if ~isempty(opts.SavePath)
+        exportgraphics(gcf, opts.SavePath, 'Resolution', 150);
+        fprintf('Saved: %s\n', opts.SavePath);
+    end
+end
+
+
+function [field, dir_out] = composite_orbits(DS, orb_idx, opts)
+    n_lat = numel(DS.latitude);
+    n_lon = numel(DS.longitude);
+    has_dir = isfield(DS, 'wind_direction');
+    has_qi = isfield(DS, 'quality_indicator');
+
+    if strcmp(opts.Composite, 'last')
+        field = NaN(n_lat, n_lon);
+        dir_out = NaN(n_lat, n_lon);
+
+        for k = 1:numel(orb_idx)
+            oi = orb_idx(k);
+            spd = squeeze(DS.wind_speed(oi, :, :));
+            valid = isfinite(spd);
+
+            if has_qi && ~isnan(opts.QIMax)
+                qi_slice = squeeze(DS.quality_indicator(oi, :, :));
+                valid = valid & (qi_slice <= opts.QIMax);
+            end
+
+            if strcmp(opts.Variable, 'wind_speed')
+                field(valid) = spd(valid);
+            elseif strcmp(opts.Variable, 'wind_direction') && has_dir
+                d = squeeze(DS.wind_direction(oi, :, :));
+                dv = valid & isfinite(d);
+                field(dv) = d(dv);
+            elseif strcmp(opts.Variable, 'u') && has_dir
+                d = squeeze(DS.wind_direction(oi, :, :));
+                dv = valid & isfinite(d);
+                field(dv) = -spd(dv) .* sin(deg2rad(d(dv)));
+            elseif strcmp(opts.Variable, 'v') && has_dir
+                d = squeeze(DS.wind_direction(oi, :, :));
+                dv = valid & isfinite(d);
+                field(dv) = -spd(dv) .* cos(deg2rad(d(dv)));
+            end
+
+            if has_dir
+                d = squeeze(DS.wind_direction(oi, :, :));
+                dv = valid & isfinite(d);
+                dir_out(dv) = d(dv);
+            end
+        end
+
+    elseif strcmp(opts.Composite, 'mean')
+        sum_u = zeros(n_lat, n_lon);
+        sum_v = zeros(n_lat, n_lon);
+        sum_spd = zeros(n_lat, n_lon);
+        cnt = zeros(n_lat, n_lon);
+
+        for k = 1:numel(orb_idx)
+            oi = orb_idx(k);
+            spd = squeeze(DS.wind_speed(oi, :, :));
+            valid = isfinite(spd);
+
+            if has_qi && ~isnan(opts.QIMax)
+                qi_slice = squeeze(DS.quality_indicator(oi, :, :));
+                valid = valid & (qi_slice <= opts.QIMax);
+            end
+
+            sum_spd(valid) = sum_spd(valid) + spd(valid);
+
+            if has_dir
+                d = squeeze(DS.wind_direction(oi, :, :));
+                dv = valid & isfinite(d);
+                sum_u(dv) = sum_u(dv) + sin(deg2rad(d(dv)));
+                sum_v(dv) = sum_v(dv) + cos(deg2rad(d(dv)));
+                cnt(dv) = cnt(dv) + 1;
+            else
+                cnt(valid) = cnt(valid) + 1;
+            end
+        end
+
+        has_data = cnt > 0;
+        mean_spd = NaN(n_lat, n_lon);
+        mean_spd(has_data) = sum_spd(has_data) ./ cnt(has_data);
+        mean_dir = NaN(n_lat, n_lon);
+        if has_dir
+            mean_dir(has_data) = mod(rad2deg(atan2(sum_u(has_data), ...
+                sum_v(has_data))), 360);
+        end
+
+        if strcmp(opts.Variable, 'wind_speed')
+            field = mean_spd;
+        elseif strcmp(opts.Variable, 'wind_direction')
+            field = mean_dir;
+        elseif strcmp(opts.Variable, 'u')
+            field = NaN(n_lat, n_lon);
+            field(has_data) = -mean_spd(has_data) .* sin(deg2rad(mean_dir(has_data)));
+        elseif strcmp(opts.Variable, 'v')
+            field = NaN(n_lat, n_lon);
+            field(has_data) = -mean_spd(has_data) .* cos(deg2rad(mean_dir(has_data)));
+        else
+            field = mean_spd;
+        end
+        dir_out = mean_dir;
+    else
+        error('Unknown composite method: %s', opts.Composite);
+    end
+end
+
+
+function cmap = mwow_jet_colormap(n)
+% Black-blue-cyan-green-yellow-orange-red colormap matching MWOW tools.
+    anchors = [0.00  0.0 0.0 0.0;
+               0.15  0.0 0.0 0.5;
+               0.30  0.0 0.0 1.0;
+               0.40  0.0 1.0 1.0;
+               0.55  0.0 1.0 0.0;
+               0.70  1.0 1.0 0.0;
+               0.85  1.0 0.5 0.0;
+               1.00  1.0 0.0 0.0];
+    xi = linspace(0, 1, n)';
+    cmap = interp1(anchors(:,1), anchors(:,2:4), xi);
+end
+
+
+function cmap = blue_white_red(n)
+% Diverging blue-white-red colormap for u/v components.
+    anchors = [0.0  0.0 0.0 0.7;
+               0.5  1.0 1.0 1.0;
+               1.0  0.7 0.0 0.0];
+    xi = linspace(0, 1, n)';
+    cmap = interp1(anchors(:,1), anchors(:,2:4), xi);
+end
+
+
+function cmap = resolve_colormap(name)
+    if isnumeric(name) && size(name, 2) == 3
+        cmap = name;
+    elseif ischar(name) || isstring(name)
+        cmap = feval(name, 256);
+    else
+        cmap = jet(256);
     end
 end
