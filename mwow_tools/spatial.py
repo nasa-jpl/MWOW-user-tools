@@ -351,3 +351,137 @@ def _composite_orbits(ds, orbit_indices, method, qi_max, variable):
     else:
         raise ValueError(f"Unknown composite method: '{method}'. "
                          f"Use 'last' or 'mean'.")
+
+
+# Categorical colormap for sensor coverage
+_SENSOR_COLORS = [
+    "#1f77b4",  # ASCAT-B (blue)
+    "#2ca02c",  # ASCAT-C (green)
+    "#ff7f0e",  # EOS-6 (orange)
+    "#d62728",  # HY-2B (red)
+    "#e377c2",  # HY-2C (pink)
+    "#9467bd",  # SMAP (purple)
+    "#17becf",  # SWOT (cyan)
+    "#8c564b",  # COWVR (brown)
+]
+
+
+def plot_sensor_coverage(ds, region=None, orbits=None, qi_max=2,
+                         title=None, save_path=None, dpi=150,
+                         figsize=(10, 7), ax=None):
+    """Plot a map showing which sensor observed each pixel.
+
+    Each pixel is colored by the sensor that provided the last valid
+    observation (analogous to the "last" composite in :func:`plot_wind_map`).
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        MWOW dataset with dimensions (orbit, latitude, longitude).
+    region : dict or None, optional
+        Spatial subset: {lat_center, lon_center, lat_size, lon_size}.
+    orbits : list of int or None, optional
+        Orbit indices to include.  If None, uses all orbits.
+    qi_max : int or None, optional
+        Maximum quality_indicator to display (default 2).
+    title : str or None, optional
+        Plot title.
+    save_path : str or None, optional
+        If provided, save figure to this path.
+    dpi : int, optional
+        Output DPI (default 150).
+    figsize : tuple, optional
+        Figure size in inches (default (10, 7)).
+    ax : matplotlib Axes or None, optional
+        Existing GeoAxes to plot on.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The map axes.
+    """
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+    from matplotlib.patches import Patch
+    from mwow_tools.reader import select_region
+
+    if region is not None:
+        ds = select_region(
+            ds, region["lat_center"], region["lon_center"],
+            lat_size=region.get("lat_size", 5.0),
+            lon_size=region.get("lon_size", 5.0),
+            drop_empty_orbits=False)
+
+    lats = ds.latitude.values
+    lons = ds.longitude.values
+    n_orbits = ds.sizes["orbit"]
+
+    if orbits is None:
+        orbit_indices = list(range(n_orbits))
+    else:
+        orbit_indices = list(orbits)
+
+    wind_speed = ds.wind_speed.values
+    qi = ds.quality_indicator.values if "quality_indicator" in ds else None
+    sensor_ids_arr = ds.sensor_id.values  # (orbit,)
+
+    n_lat = len(lats)
+    n_lon = len(lons)
+    sensor_field = np.full((n_lat, n_lon), np.nan)
+
+    for orb in orbit_indices:
+        spd = wind_speed[orb]
+        valid = np.isfinite(spd)
+        if qi is not None and qi_max is not None:
+            valid &= qi[orb] <= qi_max
+        sid = sensor_ids_arr[orb]
+        if np.isfinite(sid):
+            sensor_field[valid] = sid
+
+    sensor_cmap = ListedColormap(_SENSOR_COLORS, N=8)
+    bounds = np.arange(-0.5, 8.5, 1.0)
+    sensor_norm = BoundaryNorm(bounds, sensor_cmap.N)
+
+    lat_span = lats[-1] - lats[0]
+    coast_res = "110m" if lat_span > 60 else "50m" if lat_span > 15 else "10m"
+
+    projection = ccrs.PlateCarree()
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize,
+                               subplot_kw={"projection": projection})
+        own_figure = True
+    else:
+        fig = ax.figure
+        own_figure = False
+
+    ax.set_extent([lons[0], lons[-1], lats[0], lats[-1]], crs=projection)
+    ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=1)
+    ax.coastlines(resolution=coast_res, linewidth=0.8, zorder=3)
+
+    ax.pcolormesh(
+        lons, lats, sensor_field,
+        cmap=sensor_cmap, norm=sensor_norm, shading="nearest",
+        transform=projection, zorder=2)
+
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color="gray",
+                      alpha=0.5, linestyle="--", zorder=5)
+    gl.top_labels = False
+    gl.right_labels = False
+
+    present_ids = np.unique(sensor_field[np.isfinite(sensor_field)]).astype(int)
+    legend_patches = [
+        Patch(facecolor=_SENSOR_COLORS[sid], label=SENSOR_NAMES.get(sid, f"ID={sid}"))
+        for sid in present_ids
+    ]
+    ax.legend(handles=legend_patches, loc="lower left",
+              fontsize=9, framealpha=0.9)
+
+    if title is None:
+        title = "Sensor Coverage"
+    ax.set_title(title, fontsize=12, fontweight="bold")
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        if own_figure:
+            plt.close(fig)
+
+    return ax

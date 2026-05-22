@@ -17,6 +17,8 @@ dependencies = [
     "xarray",
     "netCDF4",
     "matplotlib",
+    "cartopy",
+    "pandas",
 ]
 
 [project.optional-dependencies]

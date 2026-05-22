@@ -35,9 +35,10 @@ from mwow_tools.compare import (
     circular_abs_diff,
 )
 
-from mwow_tools.spatial import plot_wind_map
+from mwow_tools.spatial import plot_wind_map, plot_sensor_coverage
 
-from mwow_tools.video import generate_region_video
+from mwow_tools.video import (generate_region_video, generate_track_video,
+                              generate_storm_video)
 
 __version__ = "0.2.0"
 
@@ -60,5 +61,8 @@ __all__ = [
     "comparison_stats",
     "circular_abs_diff",
     "plot_wind_map",
+    "plot_sensor_coverage",
     "generate_region_video",
+    "generate_track_video",
+    "generate_storm_video",
 ]
